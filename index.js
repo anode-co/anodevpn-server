@@ -65,6 +65,7 @@ type CjdnsConn_t = {
   // hacks
   s4?: number,
   s6?: number,
+  number: number,
 };
 
 
@@ -197,6 +198,7 @@ const syncSessions = (ctx, done) => {
                         throw new Error("Cannot run a VPN server because this node is a VPN client " +
                             "with lease: " + JSON.stringify(ret, null, '\t'));
                     }
+                    ret.number = n;
                     connections[n] = ret;
                 }));
             }).nThen;
@@ -233,7 +235,7 @@ const syncSessions = (ctx, done) => {
             const conn = connByKey[key];
             if (conn) {
                 const lease = ctx.db.leases[key];
-                console.error(`syncSessions() detected lease for ${key}`);
+                console.error(`syncSessions() detected lease for ${key} at connection num ${conn.number}`);
                 if (conn.ip4Address && ctx.cfg.cfg4) {
                     if (conn.ip4Alloc !== ctx.cfg.cfg4.allocSize) {
                         console.error(conn, ctx.cfg.cfg4.allocSize);
