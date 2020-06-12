@@ -79,6 +79,7 @@ const main = (argv) => {
         port,
     };
     const h = (url.indexOf('https://') === 0) ? Https : Http;
+    console.error(port);
     Cjdnsadmin.connect((err, cjdns) => {
         if (err) {
             throw err;

@@ -332,10 +332,12 @@ const readJson = (sess, then) => {
     const data = [];
     sess.req.on('data', (d) => data.push(d));
     sess.req.on('end', () => {
-        if (typeof(data[0]) !== 'string') {
-            return void complete(sess, 405, "could not read json, not a string");
+        let str = '';
+        if (Buffer.isBuffer(typeof(data[0]))) {
+            str = Buffer.concat(data).toString('utf8');
+        } else {
+            str = data.join('');
         }
-        const str = data.join('');
         let o;
         try {
             o = JSON.parse(str);
@@ -460,6 +462,7 @@ const httpReq = (ctx, req, res) => {
     if (req.url === '/api/0.3/server/authorize/') {
         return void httpRequestAuth(sess);
     }
+    return void complete(sess, 404, "no such endpoint");
 };
 
 const getAddressCount = (prefix, alloc, addrWidth, t) => {
