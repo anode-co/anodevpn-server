@@ -399,7 +399,7 @@ const allocate = (sess, pubkey) => {
         if (Object.keys(sess.ctx.db.slotmap4).length >= sess.ctx.cc.slots4) {
             return void complete(sess, 503, `IPv4 addresses exhausted`);
         }
-        let s4 = Math.floor(Math.random() * sess.ctx.cc.slots4);
+        s4 = Math.floor(Math.random() * sess.ctx.cc.slots4);
         while (sess.ctx.db.slotmap4[s4]) { s4 = (s4 + 1) % sess.ctx.cc.slots4; }
         sess.ctx.db.slotmap4[s4] = 1;
     }
