@@ -243,7 +243,7 @@ const syncSessions = (ctx, done) => {
                         const oldAddr = addrForSlot4(ctx, lease.s4);
                         // Always trust cjdns rather than the db because cjdns is what's in practice
                         console.error(`syncSessions() Warning: change of address for ` +
-                            `[${conn.key}] [${oldAddr}] -> [${conn.ip4Address}]`);
+                            `[${conn.key}] [${oldAddr}] -> [${conn.ip4Address}] [${conn.s4}] -> [${lease.s4}]`);
                         delete ctx.db.slotmap4[lease.s4];
                         lease.s4 = conn.s4;
                     }
@@ -256,7 +256,7 @@ const syncSessions = (ctx, done) => {
                     if (lease.s6 !== conn.s6) {
                         const oldAddr = addrForSlot6(ctx, lease.s6);
                         console.error(`syncSessions() Warning: change of address for ` +
-                            `[${conn.key}] [${oldAddr}] -> [${conn.ip6Address}]`);
+                            `[${conn.key}] [${oldAddr}] -> [${conn.ip6Address}] [${conn.s6}] -> [${lease.s6}]`);
                         delete ctx.db.slotmap6[lease.s6];
                         lease.s6 = conn.s6;
                     }
