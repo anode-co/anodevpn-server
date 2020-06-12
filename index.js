@@ -450,7 +450,7 @@ const httpRequestAuth = (sess) => {
                     return void complete(sess, 200, null, {
                         status: "success",
                         message: "updated timeout",
-                        expires_at: Math.floor(l.to / 1000),
+                        expiresAt: Math.floor(l.to / 1000),
                     });
                 });
             } else {
