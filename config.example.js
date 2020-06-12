@@ -11,4 +11,5 @@ module.exports = {
         prefix: '2c0f:f930:0002::/48',
     },
     serverPort: 8099,
+    dryrun: true,
 };

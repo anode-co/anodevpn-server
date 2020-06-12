@@ -19,6 +19,7 @@ type Config_t = {
     cfg6: void | NetConfig_t,
     cfg4: void | NetConfig_t,
     serverPort: number,
+    dryrun: bool,
 };
 import type { IncomingMessage, ServerResponse } from 'http';
 type ComputedConfig_t = {
@@ -78,25 +79,22 @@ type Error_t = {
 */
 const Config /*:Config_t*/ = require('./config.js');
 
-const complete = (sess /*:Session_t*/, error /*:Error_t|null*/, data) => {
-    //const timeSpan = ((+new Date()) - sess.startTime) / 1000;
+const complete = (sess /*:Session_t*/, code /*:number*/, error /*:string|null*/, data) => {
+    sess.res.setHeader('Content-Type', 'application/json');
     if (error) {
-      sess.res.setHeader('Content-Type', 'application/json');
-      sess.res.statusCode = error.code;
-      sess.res.end(JSON.stringify(error, null, '\t'));
-    } else if (typeof(data) === 'string') {
-      sess.res.end(data);
+        sess.res.statusCode = code;
+        sess.res.end(JSON.stringify({
+            status: "error",
+            message: error,
+        }, null, '\t'));
     } else {
-      sess.res.setHeader('Content-Type', 'application/json');
-      sess.res.end(JSON.stringify(data, (_, x) => {
-        // $FlowFixMe - new fancy js stuff
-        if (typeof x !== 'bigint') { return x; }
-        return x.toString();
-      }, '\t'));
+        sess.res.statusCode = code;
+        sess.res.end(JSON.stringify(data, (_, x) => {
+            // $FlowFixMe - new fancy js stuff
+            if (typeof x !== 'bigint') { return x; }
+            return x.toString();
+        }, '\t'));
     }
-    // const line = sess.req.method + ' ' + sess.req.url + ' ' + sess.res.statusCode +
-    //   ((error) ? ` (${error.error}) in (${error.fn})` : "");
-    //sess.ctx.log.debug(line, `${timeSpan} seconds`);
 };
 
 const MARK128 = BigInt(2)**BigInt(132);
@@ -132,6 +130,7 @@ const slotForAddr6 = (ctx, addrStr) => {
 
 const addLease = (ctx, pubkey, lease, then) => {
     if (!ctx.mut.cjdns) { return; }
+    const cjdns = ctx.mut.cjdns;
     let ip6Prefix, ip6Alloc, ip6Address, ip4Prefix, ip4Alloc, ip4Address;
     if (lease.s4 > -1 && ctx.cfg.cfg4) {
         ip4Prefix = ctx.cfg.cfg4.networkSize;
@@ -143,14 +142,19 @@ const addLease = (ctx, pubkey, lease, then) => {
         ip6Alloc = ctx.cfg.cfg6.allocSize;
         ip6Address = addrForSlot6(ctx, lease.s6);
     }
-    ctx.mut.cjdns.IpTunnel_allowConnection(
+    console.error('addLease() IpTunnel_allowConnection',
+        pubkey, ip6Prefix, ip6Alloc, ip6Address, ip4Prefix, ip4Alloc, ip4Address);
+    if (ctx.cfg.dryrun) {
+        return void then();
+    }
+    cjdns.IpTunnel_allowConnection(
         pubkey, ip6Prefix, ip6Alloc, ip6Address, ip4Prefix, ip4Alloc, ip4Address, (err, res) => {
             if (err) {
-                console.error('IpTunnel_allowConnection',
+                console.error('addLease() IpTunnel_allowConnection',
                     pubkey, ip6Prefix, ip6Alloc, ip6Address, ip4Prefix, ip4Alloc, ip4Address, '->', err);
                 then(err);
             } else if (res.error !== "none") {
-                console.error('IpTunnel_allowConnection',
+                console.error('addLease() IpTunnel_allowConnection',
                     pubkey, ip6Prefix, ip6Alloc, ip6Address, ip4Prefix, ip4Alloc, ip4Address, '->', res);
                 then(res);
             } else {
@@ -304,7 +308,7 @@ const withCjdns = (sess, cb) => {
                 i++;
                 setTimeout(again, 5000);
             } else {
-                complete(sess, { code: 500, error: "cjdns is not running" });
+                complete(sess, 500, "cjdns is not running");
             }
         };
         setTimeout(again, 1000);
@@ -316,14 +320,14 @@ const readJson = (sess, then) => {
     sess.req.on('data', (d) => data.push(d));
     sess.req.on('end', () => {
         if (typeof(data[0]) !== 'string') {
-            return void complete(sess, { code: 400, error: "could not read json, not a string" });
+            return void complete(sess, 405, "could not read json, not a string");
         }
         const str = data.join('');
         let o;
         try {
             o = JSON.parse(str);
         } catch (e) {
-            return void complete(sess, { code: 400, error: "could not parse json" });
+            return void complete(sess, 405, "could not parse json");
         }
         const auth = sess.req.headers['authorization'];
         if (auth && auth.indexOf('cjdns ') === 0) {
@@ -332,11 +336,11 @@ const readJson = (sess, then) => {
             withCjdns(sess, (cjdns) => {
                 cjdns.Sign_checkSig(sig, hash, (err, ret) => {
                     if (err) {
-                        return void complete(sess, { code: 500, error: "Sign_checksig error " + err });
+                        return void complete(sess, 500, "Sign_checksig error " + err);
                     } else if (ret.error === 'invalid signature') {
-                        return void complete(sess, { code: 403, error: "Sign_checksig invalid sig" });
+                        return void complete(sess, 403, "Sign_checksig invalid sig");
                     } else if (ret.error !== 'none') {
-                        return void complete(sess, { code: 500, error: "Sign_checksig error " + ret.error });
+                        return void complete(sess, 500, "Sign_checksig error " + ret.error);
                     } else {
                         then(o, ret);
                     }
@@ -351,11 +355,11 @@ const readJson = (sess, then) => {
 const needAuth = (sess, cb) => {
     return (o, sig) => {
         if (!sig) {
-            return void complete(sess, { code: 403, error: "cjdns http signature required" });
+            return void complete(sess, 403, "cjdns http signature required");
         } else if (!o.date || typeof(o.date) !== 'number') {
-            return void complete(sess, { code: 403, error: "date field required and must be a number" });
+            return void complete(sess, 405, "date field required and must be a number");
         } else if (now() - +new Date(o.date*1000) > DAY_MS) {
-            return void complete(sess, { code: 403, error: "date is more than 1 day old" });
+            return void complete(sess, 405, "date is more than 1 day old");
         } else {
             cb(o, sig);
         }
@@ -374,7 +378,7 @@ const allocate = (sess, pubkey) => {
     let s4 = -1;
     if (sess.ctx.cc.slots4) {
         if (Object.keys(sess.ctx.db.slotmap4).length >= sess.ctx.cc.slots4) {
-            return void complete(sess, { code: 503, error: `IPv4 addresses exhausted` });
+            return void complete(sess, 503, `IPv4 addresses exhausted`);
         }
         let s4 = Math.floor(Math.random() * sess.ctx.cc.slots4);
         while (sess.ctx.db.slotmap4[''+s4]) { s4 = (s4 + 1) % sess.ctx.cc.slots4; }
@@ -383,7 +387,7 @@ const allocate = (sess, pubkey) => {
     let s6 = -1;
     if (sess.ctx.cc.slots6) {
         if (Object.keys(sess.ctx.db.slotmap6).length >= sess.ctx.cc.slots6) {
-            return void complete(sess, { code: 503, error: `IPv6 addresses exhausted` });
+            return void complete(sess, 503, `IPv6 addresses exhausted`);
         }
         s6 = Math.floor(Math.random() * sess.ctx.cc.slots6);
         while (sess.ctx.db.slotmap6[''+s6]) { s6 = (s6 + 1) % sess.ctx.cc.slots6; }
@@ -392,27 +396,40 @@ const allocate = (sess, pubkey) => {
     const lease = sess.ctx.db.leases[pubkey] = { s4, s6, to: now() + DAY_MS };
     storeDb(sess.ctx, () => {
         addLease(sess.ctx, pubkey, lease, (err) => {
-            return void complete(sess, { code: 500, error: `Failed to add lease ${String(err)}` });
+            if (err) {
+                return void complete(sess, 500, `Failed to add lease ${String(err)}`);
+            } else {
+                return void complete(sess, 201, null, {
+                    status: "success",
+                    message: "allocated",
+                    expires_at: Math.floor(lease.to / 1000),
+                });
+            }
         });
     });
 };
 
 const httpRequestAuth = (sess) => {
     readJson(sess, needAuth(sess, (o, sig) => {
-        if (!o.pubkey) {
-            return void complete(sess, { code: 400, error: "expecting a cjdns public key" });
-        } else if (sig.pubkey && o.pubkey && sig.pubkey !== sess.ctx.mut.coordinatorPubkey) {
-            return void complete(sess, {
-                code: 403,
-                error: `request can only be made (signed) by either ` +
-                    `client (${o.pubkey}) or coordinator (${sess.ctx.mut.coordinatorPubkey})`,
-            });
+        if (!o.client_public_key) {
+            return void complete(sess, 405, "expecting a cjdns public key");
+        } else if (sig.pubkey !== o.client_public_key && sig.pubkey !== sess.ctx.mut.coordinatorPubkey) {
+            return void complete(sess, 403,
+                `request can only be made (signed) by either ` +
+                `client (${o.client_public_key}) or coordinator (${sess.ctx.mut.coordinatorPubkey})`);
         } else {
-            const l = sess.ctx.db.leases[o.pubkey];
+            const l = sess.ctx.db.leases[o.client_public_key];
             if (l) {
                 l.to = now() + DAY_MS;
+                storeDb(sess.ctx, () => {
+                    return void complete(sess, 200, null, {
+                        status: "success",
+                        message: "updated timeout",
+                        expires_at: Math.floor(l.to / 1000),
+                    });
+                });
             } else {
-                allocate(sess, o.pubkey);
+                allocate(sess, o.client_public_key);
             }
         }
     }));
@@ -423,7 +440,7 @@ const httpReq = (ctx, req, res) => {
         req,
         res
     };
-    if (req.url === '/api/0.3/server/authorize') {
+    if (req.url === '/api/0.3/server/authorize/') {
         return void httpRequestAuth(sess);
     }
 };
@@ -499,11 +516,15 @@ const cleanup = (ctx /*:Context_t*/, done) => {
             } else {
                 const cjdns = ctx.mut.cjdns;
                 console.error(`cleanup() IpTunnel_removeConnection(${sn.conn})`);
-                cjdns.IpTunnel_removeConnection(Number(sn.conn), w((err, ret) => {
-                    if (err) { return void fail(w, err); }
-                    if (ret.error !== 'none') { return void fail(w, "cjdns replied " + ret.error); }
+                if (ctx.cfg.dryrun) {
                     delete ctx.mut.sessions[td.pubkey];
-                }));
+                } else {
+                    cjdns.IpTunnel_removeConnection(Number(sn.conn), w((err, ret) => {
+                        if (err) { return void fail(w, err); }
+                        if (ret.error !== 'none') { return void fail(w, "cjdns replied " + ret.error); }
+                        delete ctx.mut.sessions[td.pubkey];
+                    }));
+                }
             }
         }).nThen;
     });
