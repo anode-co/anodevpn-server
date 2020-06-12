@@ -35,14 +35,15 @@ type Lease_t = {
 };
 type Db_t = {
     leases: {[string]:Lease_t},
-    slotmap4: {[string]:number},
-    slotmap6: {[string]:number},
+    slotmap4: {[number]:number},
+    slotmap6: {[number]:number},
 }
 type Context_t = {
     cfg: Config_t,
     db: Db_t,
     cc: ComputedConfig_t,
     mut: {
+        externalConfigs: {[string]:number},
         lastSync: number,
         sessions: { [string]:{ conn: number } },
         cjdns: ?any,
@@ -52,13 +53,13 @@ type Context_t = {
 type CjdnsConn_t = {
   "error": string,
   "ip4Address": string,
-  "ip4Alloc": string,
-  "ip4Prefix": string,
+  "ip4Alloc": number,
+  "ip4Prefix": number,
   "ip6Address": string,
-  "ip6Alloc": string,
-  "ip6Prefix": string,
+  "ip6Alloc": number,
+  "ip6Prefix": number,
   "key": string,
-  "outgoing": string,
+  "outgoing": number,
   "txid": string,
 
   // hacks
@@ -192,6 +193,10 @@ const syncSessions = (ctx, done) => {
                 ctx.mut.cjdns.IpTunnel_showConnection(n, w((err, ret) => {
                     if (err) { return void fail(w, err); }
                     if (ret.error !== 'none') { return void fail(w, "cjdns replied " + ret.error); }
+                    if (ret.outgoing === 1) {
+                        throw new Error("Cannot run a VPN server because this node is a VPN client " +
+                            "with lease: " + JSON.stringify(ret, null, '\t'));
+                    }
                     connections[n] = ret;
                 }));
             }).nThen;
@@ -199,24 +204,32 @@ const syncSessions = (ctx, done) => {
         nt(w());
     }).nThen((w) => {
         const connByKey = {};
+        const externalConfigs = {};
         for (const num in connections) {
             const conn = connections[num];
             connByKey[conn.key] = conn;
+            const lease = ctx.db.leases[conn.key];
             if (conn.ip4Address) {
                 conn.s4 = slotForAddr4(ctx, conn.ip4Address);
                 // make sure we mark off these slots as used, even if they're allocated externally
-                ctx.db.slotmap4[''+conn.s4] = 1;
+                ctx.db.slotmap4[conn.s4] = 1;
             }
             if (conn.ip6Address) {
-                conn.s6 = slotForAddr6(ctx, conn.ip4Address);
-                ctx.db.slotmap6[''+conn.s6] = 1;
+                conn.s6 = slotForAddr6(ctx, conn.ip6Address);
+                ctx.db.slotmap6[conn.s6] = 1;
+            }
+            if (!lease) {
+                console.error(`syncSessions() external ${conn.key} ${conn.ip4Address} ${conn.ip6Address}`);
+                externalConfigs[conn.key] = 1;
             }
         }
+        ctx.mut.externalConfigs = externalConfigs;
         const leasesNeeded = {};
         for (const key in ctx.db.leases) {
             const conn = connByKey[key];
             if (conn) {
                 const lease = ctx.db.leases[key];
+                console.error(`syncSessions() detected lease for ${key}`);
                 if (conn.ip4Address && ctx.cfg.cfg4) {
                     if (conn.ip4Alloc !== ctx.cfg.cfg4.allocSize) {
                         console.error(conn, ctx.cfg.cfg4.allocSize);
@@ -227,7 +240,7 @@ const syncSessions = (ctx, done) => {
                         // Always trust cjdns rather than the db because cjdns is what's in practice
                         console.error(`syncSessions() Warning: change of address for ` +
                             `[${conn.key}] [${oldAddr}] -> [${conn.ip4Address}]`);
-                        delete ctx.db.slotmap4[''+lease.s4];
+                        delete ctx.db.slotmap4[lease.s4];
                         lease.s4 = conn.s4;
                     }
                 }
@@ -240,11 +253,12 @@ const syncSessions = (ctx, done) => {
                         const oldAddr = addrForSlot6(ctx, lease.s6);
                         console.error(`syncSessions() Warning: change of address for ` +
                             `[${conn.key}] [${oldAddr}] -> [${conn.ip6Address}]`);
-                        delete ctx.db.slotmap6[''+lease.s6];
+                        delete ctx.db.slotmap6[lease.s6];
                         lease.s6 = conn.s6;
                     }
                 }
             } else {
+                console.error(`syncSessions() need lease for ${key}`);
                 leasesNeeded[key] = ctx.db.leases[key];
             }
         }
@@ -281,7 +295,6 @@ const checkcjdns = (ctx, attemptNum, done) => {
         return;
     }
     ctx.mut.cjdns.ping((err, ret) => {
-        //console.log(err, ret);
         if (!err && ret.q === 'pong') {
             done();
         } else if (attemptNum > 5) {
@@ -381,8 +394,8 @@ const allocate = (sess, pubkey) => {
             return void complete(sess, 503, `IPv4 addresses exhausted`);
         }
         let s4 = Math.floor(Math.random() * sess.ctx.cc.slots4);
-        while (sess.ctx.db.slotmap4[''+s4]) { s4 = (s4 + 1) % sess.ctx.cc.slots4; }
-        sess.ctx.db.slotmap4[''+s4] = 1;
+        while (sess.ctx.db.slotmap4[s4]) { s4 = (s4 + 1) % sess.ctx.cc.slots4; }
+        sess.ctx.db.slotmap4[s4] = 1;
     }
     let s6 = -1;
     if (sess.ctx.cc.slots6) {
@@ -390,8 +403,8 @@ const allocate = (sess, pubkey) => {
             return void complete(sess, 503, `IPv6 addresses exhausted`);
         }
         s6 = Math.floor(Math.random() * sess.ctx.cc.slots6);
-        while (sess.ctx.db.slotmap6[''+s6]) { s6 = (s6 + 1) % sess.ctx.cc.slots6; }
-        sess.ctx.db.slotmap6[''+s6] = 1;
+        while (sess.ctx.db.slotmap6[s6]) { s6 = (s6 + 1) % sess.ctx.cc.slots6; }
+        sess.ctx.db.slotmap6[s6] = 1;
     }
     const lease = sess.ctx.db.leases[pubkey] = { s4, s6, to: now() + DAY_MS };
     storeDb(sess.ctx, () => {
@@ -409,16 +422,20 @@ const allocate = (sess, pubkey) => {
     });
 };
 
+const PUBKEY = 'clientPublicKey';
+
 const httpRequestAuth = (sess) => {
     readJson(sess, needAuth(sess, (o, sig) => {
-        if (!o.client_public_key) {
+        if (!o[PUBKEY]) {
             return void complete(sess, 405, "expecting a cjdns public key");
-        } else if (sig.pubkey !== o.client_public_key && sig.pubkey !== sess.ctx.mut.coordinatorPubkey) {
+        } else if (sig.pubkey !== o[PUBKEY] && sig.pubkey !== sess.ctx.mut.coordinatorPubkey) {
             return void complete(sess, 403,
                 `request can only be made (signed) by either ` +
-                `client (${o.client_public_key}) or coordinator (${sess.ctx.mut.coordinatorPubkey})`);
+                `client (${o[PUBKEY]}) or coordinator (${sess.ctx.mut.coordinatorPubkey})`);
+        } else if (sess.ctx.mut.externalConfigs[o[PUBKEY]]) {
+            return void complete(sess, 400, `cannot grant a lease because one was manually added`);
         } else {
-            const l = sess.ctx.db.leases[o.client_public_key];
+            const l = sess.ctx.db.leases[o[PUBKEY]];
             if (l) {
                 l.to = now() + DAY_MS;
                 storeDb(sess.ctx, () => {
@@ -429,7 +446,7 @@ const httpRequestAuth = (sess) => {
                     });
                 });
             } else {
-                allocate(sess, o.client_public_key);
+                allocate(sess, o[PUBKEY]);
             }
         }
     }));
@@ -531,8 +548,8 @@ const cleanup = (ctx /*:Context_t*/, done) => {
     nt((w) => {
         for (const d of toDelete) {
             console.error('cleanup() drop ' + d.pubkey);
-            if (d.lease.s4) { delete ctx.db.slotmap4[''+d.lease.s4]; }
-            if (d.lease.s6) { delete ctx.db.slotmap6[''+d.lease.s6]; }
+            if (d.lease.s4) { delete ctx.db.slotmap4[d.lease.s4]; }
+            if (d.lease.s6) { delete ctx.db.slotmap6[d.lease.s6]; }
             delete ctx.db.leases[d.pubkey];
         }
         storeDb(ctx, w());
@@ -562,11 +579,13 @@ const main = () => {
             cfg: Config,
             db,
             cc: computedConfig(Config),
+            externalConfigs: {},
             mut: {
+                externalConfigs: {},
                 lastSync: 0,
                 sessions: {},
                 cjdns: undefined,
-                coordinatorPubkey: 'hwnu9u7n8v9u7rjrflhsv45q16p103c1rfx9208hnzr2tq988z90.k',
+                coordinatorPubkey: '5tw1dxrzmkj13b17vctv01lrl0sb5j231lckwnzuu74csd2958r0.k',
             },
         });
     }).nThen((w) => {
