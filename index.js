@@ -415,7 +415,7 @@ const allocate = (sess, pubkey) => {
                 return void complete(sess, 201, null, {
                     status: "success",
                     message: "allocated",
-                    expires_at: Math.floor(lease.to / 1000),
+                    expiresAt: Math.floor(lease.to / 1000),
                 });
             }
         });
