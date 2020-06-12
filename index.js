@@ -347,7 +347,7 @@ const readJson = (sess, then) => {
         const auth = sess.req.headers['authorization'];
         if (auth && auth.indexOf('cjdns ') === 0) {
             const sig = auth.slice(6);
-            const hash = Crypto.createHash('sha-256').update(Buffer.from(str, 'utf8')).digest('base64');
+            const hash = Crypto.createHash('sha256').update(Buffer.from(str, 'utf8')).digest('base64');
             withCjdns(sess, (cjdns) => {
                 cjdns.Sign_checkSig(sig, hash, (err, ret) => {
                     if (err) {
