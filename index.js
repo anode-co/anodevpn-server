@@ -474,12 +474,12 @@ const getAddressCount = (prefix, alloc, addrWidth, t) => {
     // throw if there's a problem
     IpAddr.parse(addrPfx[0]);
     if (alloc < pfx - 4) { throw new Error(`prefix${t} is too small for alloc size`); }
-    return BigInt(2)**BigInt((addrWidth-pfx) - (addrWidth-alloc));
+    return Number( BigInt(2)**BigInt((addrWidth-pfx) - (addrWidth-alloc)) );
 };
 const computedConfig = (cfg) /*:ComputedConfig_t*/ => {
     const out = {
-        slots6: BigInt(0),
-        slots4: BigInt(0),
+        slots6: 0,
+        slots4: 0,
         baseAddr6: BigInt(0),
         baseAddr4: BigInt(0),
     };
