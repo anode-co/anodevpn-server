@@ -122,11 +122,11 @@ const addrForSlot4 = (ctx, slot) => {
 };
 const slotForAddr4 = (ctx, addrStr) => {
     const addr = BigInt('0x' + Buffer.from(IpAddr.parse(addrStr).toByteArray()).toString('hex'));
-    return (addr - ctx.cc.baseAddr4) >> BigInt(32 - alloc4(ctx));
+    return Number( (addr - ctx.cc.baseAddr4) >> BigInt(32 - alloc4(ctx)) );
 };
 const slotForAddr6 = (ctx, addrStr) => {
     const addr = BigInt('0x' + Buffer.from(IpAddr.parse(addrStr).toByteArray()).toString('hex'));
-    return (addr - ctx.cc.baseAddr6) >> BigInt(128 - alloc6(ctx));
+    return Number( (addr - ctx.cc.baseAddr6) >> BigInt(128 - alloc6(ctx)) );
 };
 
 const addLease = (ctx, pubkey, lease, then) => {
