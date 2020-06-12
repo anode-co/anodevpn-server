@@ -3,7 +3,7 @@ module.exports = {
     cfg4: {
         allocSize: 32,
         networkSize: 0,
-        prefix: '10.67.0.0/16',
+        prefix: '10.66.0.0/16',
     },
     cfg6: {
         allocSize: 64,

@@ -212,11 +212,15 @@ const syncSessions = (ctx, done) => {
             if (conn.ip4Address) {
                 conn.s4 = slotForAddr4(ctx, conn.ip4Address);
                 // make sure we mark off these slots as used, even if they're allocated externally
-                ctx.db.slotmap4[conn.s4] = 1;
+                if (conn.s4 > -1 && conn.s4 < ctx.cc.slots4) {
+                    ctx.db.slotmap4[conn.s4] = 1;
+                }
             }
             if (conn.ip6Address) {
                 conn.s6 = slotForAddr6(ctx, conn.ip6Address);
-                ctx.db.slotmap6[conn.s6] = 1;
+                if (conn.s6 > -1 && conn.s6 < ctx.cc.slots6) {
+                    ctx.db.slotmap6[conn.s6] = 1;
+                }
             }
             if (!lease) {
                 console.error(`syncSessions() external ${conn.key} ${conn.ip4Address} ${conn.ip6Address}`);
@@ -509,6 +513,7 @@ const computedConfig = (cfg) /*:ComputedConfig_t*/ => {
         console.error(`We will only issue ${min} slots`);
         out.slots4 = out.slots6 = min;
     }
+    console.log(out);
     return Object.freeze(out);
 };
 
