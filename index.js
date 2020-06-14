@@ -225,7 +225,7 @@ const syncSessions = (ctx, done) => {
                 }
             }
             if (!lease) {
-                console.error(`syncSessions() external ${conn.key} ${conn.ip4Address} ${conn.ip6Address}`);
+                console.error(`syncSessions() external ${conn.key} ${conn.ip4Address} ${conn.ip6Address} ${num}`);
                 externalConfigs[conn.key] = 1;
             }
         }
@@ -612,10 +612,10 @@ const main = () => {
         let lastClean = 0;
         const again = () => {
             nThen((w) => {
-                if (now() - ctx.mut.lastSync < 600000) { return; }
+                if (now() - ctx.mut.lastSync < 36000000) { return; }
                 syncSessions(ctx, w());
             }).nThen((w) => {
-                if (now() - lastClean < 300000) { return; }
+                if (now() - lastClean < 600000) { return; }
                 cleanup(ctx, w(() => { lastClean = now(); }));
             }).nThen((_) => {
                 setTimeout(again, 10000);
