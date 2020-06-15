@@ -96,7 +96,7 @@ const complete = (sess /*:Session_t*/, code /*:number*/, error /*:string|null*/,
             if (typeof x !== 'bigint') { return x; }
             return x.toString();
         }, '\t');
-        console.error(`Request result ${code} - ${s}`);
+        console.error(`Request result ${code} - ${String(s)}`);
         sess.res.statusCode = code;
         sess.res.end(s);
     }
@@ -442,7 +442,7 @@ const httpRequestAuth = (sess) => {
         } else if (sig.pubkey !== o[PUBKEY] && sig.pubkey !== sess.ctx.mut.coordinatorPubkey) {
             return void complete(sess, 403,
                 `request can only be made (signed) by either ` +
-                `client (${o[PUBKEY]}) or coordinator (${sess.ctx.mut.coordinatorPubkey})`);
+                `client (${o[PUBKEY]}) or coordinator (${sess.ctx.mut.coordinatorPubkey}) (signed by ${sig.pubkey})`);
         } else if (sess.ctx.mut.externalConfigs[o[PUBKEY]]) {
             return void complete(sess, 400, `cannot grant a lease because one was manually added`);
         } else {
