@@ -84,18 +84,21 @@ const Config /*:Config_t*/ = require('./config.js');
 const complete = (sess /*:Session_t*/, code /*:number*/, error /*:string|null*/, data) => {
     sess.res.setHeader('Content-Type', 'application/json');
     if (error) {
+        console.error(`Request error ${code} - ${error}`);
         sess.res.statusCode = code;
         sess.res.end(JSON.stringify({
             status: "error",
             message: error,
         }, null, '\t'));
     } else {
-        sess.res.statusCode = code;
-        sess.res.end(JSON.stringify(data, (_, x) => {
+        const s = JSON.stringify(data, (_, x) => {
             // $FlowFixMe - new fancy js stuff
             if (typeof x !== 'bigint') { return x; }
             return x.toString();
-        }, '\t'));
+        }, '\t');
+        console.error(`Request result ${code} - ${s}`);
+        sess.res.statusCode = code;
+        sess.res.end(s);
     }
 };
 
