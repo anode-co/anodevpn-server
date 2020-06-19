@@ -73,6 +73,7 @@ type Session_t = {
   ctx: Context_t,
   req: IncomingMessage,
   res: ServerResponse,
+  timeout: TimeoutID,
 };
 type Error_t = {
   code: number,
@@ -100,6 +101,7 @@ const complete = (sess /*:Session_t*/, code /*:number*/, error /*:string|null*/,
         sess.res.statusCode = code;
         sess.res.end(s);
     }
+    clearTimeout(sess.timeout);
 };
 
 const MARK128 = BigInt(2)**BigInt(132);
@@ -463,10 +465,14 @@ const httpRequestAuth = (sess) => {
     }));
 };
 const httpReq = (ctx, req, res) => {
+    console.error(`req ${req.method} ${req.url}`);
     const sess = {
         ctx,
         req,
-        res
+        res,
+        timeout: setTimeout(() => {
+            console.error(`Request ${req.method} ${req.url} never completed`);
+        }, 10000),
     };
     if (req.url === '/api/0.3/server/authorize/') {
         return void httpRequestAuth(sess);
