@@ -205,6 +205,7 @@ const syncSessions = (ctx, done) => {
                     }
                     ret.number = n;
                     connections[n] = ret;
+                    ctx.mut.sessions[ret.key] = { conn: n };
                 }));
             }).nThen;
         });
@@ -546,9 +547,10 @@ const cleanup = (ctx /*:Context_t*/, done) => {
     toDelete.forEach((td) => {
         nt = nt((w) => {
             const sn = ctx.mut.sessions[td.pubkey];
-            if (!sn) {
-            } else if (!ctx.mut.cjdns) {
+            if (!ctx.mut.cjdns) {
                 return void fail(w, "lost cjdns");
+            } else if (!sn) {
+                console.error('No known session for ' + td.pubkey);
             } else {
                 const cjdns = ctx.mut.cjdns;
                 console.error(`cleanup() IpTunnel_removeConnection(${sn.conn})`);
