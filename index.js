@@ -92,7 +92,8 @@ const complete = (sess /*:Session_t*/, code /*:number*/, error /*:string|null*/,
             message: error,
         }, null, '\t'));
     } else {
-        const s = JSON.stringify(data, (_, x) => {
+        let mix = {sess, code, error, data}
+        const s = JSON.stringify(mix, (_, x) => {
             // $FlowFixMe - new fancy js stuff
             if (typeof x !== 'bigint') { return x; }
             return x.toString();
@@ -439,9 +440,7 @@ const allocate = (sess, pubkey) => {
 const PUBKEY = 'clientPublicKey';
 
 const httpRequestAuth = (sess) => {
-
     readJson(sess, needAuth(sess, (o, sig) => {
-
         console.log("---- Authorization request ------");
         console.log(`from cjdns pubkey: ${o[PUBKEY]}`);
         const formattedDateTime = new Date(o.date).toLocaleString("en-US")
