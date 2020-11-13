@@ -92,8 +92,7 @@ const complete = (sess /*:Session_t*/, code /*:number*/, error /*:string|null*/,
             message: error,
         }, null, '\t'));
     } else {
-        let mix = {sess, code, error, data}
-        const s = JSON.stringify(mix, (_, x) => {
+        const s = JSON.stringify(data, (_, x) => {
             // $FlowFixMe - new fancy js stuff
             if (typeof x !== 'bigint') { return x; }
             return x.toString();
