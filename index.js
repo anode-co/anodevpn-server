@@ -439,7 +439,14 @@ const allocate = (sess, pubkey) => {
 const PUBKEY = 'clientPublicKey';
 
 const httpRequestAuth = (sess) => {
+
     readJson(sess, needAuth(sess, (o, sig) => {
+
+        console.log("---- Authorization request ------");
+        console.log(`from cjdns pubkey: ${o[PUBKEY]}`);
+        const formattedDateTime = new Date(o.date).toLocaleString("en-US")
+        console.log(`at datetime: ${formattedDateTime}`)
+
         if (!o[PUBKEY]) {
             return void complete(sess, 405, "expecting a cjdns public key");
         } else if (sig.pubkey !== o[PUBKEY] && sig.pubkey !== sess.ctx.mut.coordinatorPubkey) {
@@ -460,6 +467,7 @@ const httpRequestAuth = (sess) => {
                     });
                 });
             } else {
+                console.error(`Allocating Request from ${o[PUBKEY]}`);
                 allocate(sess, o[PUBKEY]);
             }
         }
