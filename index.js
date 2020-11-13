@@ -457,6 +457,7 @@ const httpRequestAuth = (sess) => {
             return void complete(sess, 400, `cannot grant a lease because one was manually added`);
         } else {
             const l = sess.ctx.db.leases[o[PUBKEY]];
+            console.error(`Request from ${o[PUBKEY]}`);
             if (l) {
                 l.to = now() + DAY_MS;
                 storeDb(sess.ctx, () => {
