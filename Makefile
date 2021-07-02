@@ -13,3 +13,6 @@ start: ## Start anode-vpn
 
 stop: ## Stop anode-vpn
 	docker ps --all | \grep 'anodevpn-server' | awk '{print $$1}' | xargs -I{} docker rm --force {}
+
+show-logs: ## Show anode-vpn logs
+	docker ps --all | \grep 'anodevpn-server' | awk '{print $$1}' | xargs -I{} docker logs -f {}
