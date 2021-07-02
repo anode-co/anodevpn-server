@@ -9,7 +9,7 @@ build: ## Build a docker image named anodevpn-server
 	docker build --tag anode-vpn-server .
 
 start: ## Start anode-vpn
-	docker run --detach --publish 127.0.0.1:8099:8099 --network host anodevpn-server
+	docker run --detach --network host anodevpn-server
 
 stop: ## Stop anode-vpn
 	docker ps --all | \grep 'anodevpn-server' | awk '{print $$1}' | xargs -I{} docker rm --force {}
