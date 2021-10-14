@@ -613,7 +613,7 @@ const main = () => {
                 lastSync: 0,
                 sessions: {},
                 cjdns: undefined,
-                coordinatorPubkey: '5tw1dxrzmkj13b17vctv01lrl0sb5j231lckwnzuu74csd2958r0.k',
+                coordinatorPubkey: '929cwrjn11muk4cs5pwkdc5f56hu475wrlhq90pb9g38pp447640.k',
             },
         });
     }).nThen((w) => {
