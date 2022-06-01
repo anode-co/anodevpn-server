@@ -4,12 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "server": "node src/index.js",
+    "sigcurl": "node src/sigcurl.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "cjdnsadmin": "^1.0.3",
+    "dotenv": "^16.0.1",
     "ipaddr.js": "^1.9.1",
     "minimist": "^1.2.5",
     "nthen": "^0.1.10"

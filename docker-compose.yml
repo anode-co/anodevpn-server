@@ -1,0 +1,6 @@
+version: "3.9"
+services:
+  anode_vpn_server:
+    build: .
+    ports:
+      - "8099:8099"
