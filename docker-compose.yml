@@ -3,4 +3,13 @@ services:
   anode_vpn_server:
     build: .
     ports:
-      - "8099:8099"
+      - "8099:8099/tcp"
+      - "[2001:19f0:5:5f99:5400:2ff:fe77:6666/64]:8099:8099/tcp"
+    networks:
+      - anode_vpn_server_network
+networks:
+  anode_vpn_server_network:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: "fd12:3456:789a:1::/64"
