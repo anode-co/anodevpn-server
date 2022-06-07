@@ -5,7 +5,6 @@ import { config } from "./config";
 import { getComputedConfig } from "./getComputedConfig";
 import { syncSessions } from "./syncSessions";
 import { useCjdns } from "./useCjdns";
-import { Http2ServerRequest } from "http2";
 import { pruneLeases } from "./pruneLeases";
 const { checkCjdns } = useCjdns();
 import { useExpress } from "./useExpress";

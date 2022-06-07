@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import { getIpVersionString } from "./getComputedConfig";
 import { DbType, ContextType, IpVersion, LeaseType } from "./types";
 
+// TODO: use sqlite3 and prisma
 export function useDatabase() {
   let dbFile = "./db.json";
 
