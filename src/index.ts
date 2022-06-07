@@ -1,94 +1,25 @@
 /*@flow*/
 /* global BigInt */
-const Fs = require("fs");
-const Http = require("http");
-const Crypto = require("crypto");
+import Fs from "fs";
+import Http from "http";
+import Crypto from "crypto";
 
-const IpAddr = require("ipaddr.js");
-const Cjdns = require("cjdnsadmin");
-const nThen = require("nthen");
+import IpAddr from "ipaddr.js";
+import Cjdns from "cjdnsadmin";
+import nThen from "nthen";
 
-/*::
-const BigInt = (n:number|string)=>Number(n);
-type NetConfig_t = {
-    allocSize: number,
-    networkSize: number,
-    prefix: string,
-}
-type Config_t = {
-    cfg6: void | NetConfig_t,
-    cfg4: void | NetConfig_t,
-    serverPort: number,
-    dryrun: bool,
-};
-import type { IncomingMessage, ServerResponse } from 'http';
-type ComputedConfig_t = {
-    slots4: number,
-    slots6: number,
-    baseAddr6: number,
-    baseAddr4: number,
-};
-type Lease_t = {
-    s4: number,
-    s6: number,
-    to: number, // timeout milliseconds
-};
-type Db_t = {
-    leases: {[string]:Lease_t},
-    slotmap4: {[number]:number},
-    slotmap6: {[number]:number},
-}
-type Context_t = {
-    cfg: Config_t,
-    db: Db_t,
-    cc: ComputedConfig_t,
-    mut: {
-        externalConfigs: {[string]:number},
-        lastSync: number,
-        sessions: { [string]:{ conn: number } },
-        cjdns: ?any,
-        coordinatorPubkey: string,
-    }
-};
-type CjdnsConn_t = {
-  "error": string,
-  "ip4Address": string,
-  "ip4Alloc": number,
-  "ip4Prefix": number,
-  "ip6Address": string,
-  "ip6Alloc": number,
-  "ip6Prefix": number,
-  "key": string,
-  "outgoing": number,
-  "txid": string,
+import "dotenv/config";
+import Config from "./config.js";
+import { SessionType } from "./types.js";
 
-  // hacks
-  s4?: number,
-  s6?: number,
-  number: number,
+type CompleteProps = {
+  sess: SessionType;
+  code: number;
+  error: string | null;
+  data: any;
 };
 
-
-type Session_t = {
-  ctx: Context_t,
-  req: IncomingMessage,
-  res: ServerResponse,
-  timeout: TimeoutID,
-};
-type Error_t = {
-  code: number,
-  error: string,
-};
-*/
-require("dotenv").config();
-const Config /*:Config_t*/ = require("./config.js");
-
-const complete = (
-  sess /*:Session_t*/,
-  code /*:number*/,
-  error /*:string|null*/,
-  data
-) => {
+const complete = ({ sess, code, error, data }: CompleteProps) => {
   sess.res.setHeader("Content-Type", "application/json");
   if (error) {
     console.error(`Request error ${code} - ${error}`);

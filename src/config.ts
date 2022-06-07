@@ -1,4 +1,6 @@
-module.exports = {
+import { ServerConfigType } from "./types";
+
+export const config: ServerConfigType = {
   cfg4: {
     allocSize: parseInt(process.env.CFG4_ALLOC_SIZE) || 32,
     networkSize: parseInt(process.env.CFG4_NETWORK_SIZE) || 0,
