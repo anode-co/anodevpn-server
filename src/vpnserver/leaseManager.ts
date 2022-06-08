@@ -3,14 +3,11 @@ import {
   LeaseType,
   LeaseSettingsType,
   IpVersion,
-  MARK128,
-  MARK32,
   LeaseSettingForIpType,
-} from "./types";
-import IpAddr from "ipaddr.js";
-import { useCjdns } from "./useCjdns";
-import { getIpVersionString } from "./getComputedConfig";
-const { cjdns } = useCjdns();
+} from "../types";
+import { getIpVersionString } from "./config";
+import { removeSlot, getAddressForSlot } from "./slot";
+import { prisma } from "../database/prisma";
 
 type AddLeaseProps = {
   context: ContextType;
@@ -18,70 +15,15 @@ type AddLeaseProps = {
   lease: LeaseType;
 };
 
-export const getAddressForSlot = ({
+// FIXME: Use this method:
+// https://github.com/anode-co/anodevpn-server/blob/c3a798122895b9349b0b081e038e805c5f0563b7/index.js#L404
+export const allocateLease = ({
   context,
-  slot,
-  ipVersion,
+  publicKey,
 }: {
   context: ContextType;
-  slot: number;
-  ipVersion: IpVersion;
-}) => {
-  const ipVersionKey = getIpVersionString(ipVersion);
-  let allocationMax = 32;
-  let mark = MARK32;
-  if (ipVersion === IpVersion.IPv6) {
-    allocationMax = 128;
-    mark = MARK128;
-  }
-  const str = (
-    context.cc[ipVersion].baseAddress +
-    (BigInt(slot) <<
-      BigInt(allocationMax - getAllocationSize({ context, ipVersion }))) +
-    mark
-  ).toString(16);
-  const byteArray = Array.from(Buffer.from(str, "hex").slice(1));
-  return IpAddr.fromByteArray(byteArray).toString();
-};
-
-export const getAllocationSize = ({
-  context,
-  ipVersion,
-}: {
-  context: ContextType;
-  ipVersion: IpVersion;
-}): number => {
-  let allocationMax = 32;
-  let ipConfigVersionKey = "cfg4";
-  if (ipVersion === IpVersion.IPv6) {
-    allocationMax = 128;
-    ipConfigVersionKey = "cfg6";
-  }
-  return context.cfg[ipConfigVersionKey]?.allocSize || allocationMax;
-};
-export const getSlotForAddress = ({
-  context,
-  ipAddress,
-  ipVersion,
-}: {
-  context: ContextType;
-  ipAddress: string;
-  ipVersion: IpVersion;
-}) => {
-  let allocationCap = 32;
-  let ipVersionKey = "ipv4";
-  if (ipVersion === IpVersion.IPv6) {
-    allocationCap = 128;
-    ipVersionKey = "ipv6";
-  }
-  let allocationSize = getAllocationSize({ context, ipVersion });
-  const address = BigInt(
-    "0x" + Buffer.from(IpAddr.parse(ipAddress).toByteArray()).toString("hex")
-  );
-  return Number(
-    (address - context.cc[ipVersionKey].baseAddress) >> BigInt(allocationSize)
-  );
-};
+  publicKey: string;
+}) => {};
 
 export const addLease = async ({
   context,
@@ -170,4 +112,85 @@ export const addLease = async ({
       err
     );
   }
+};
+
+export const pruneLeases = async ({ context }: { context: ContextType }) => {
+  console.error("cleanup() start");
+  const now = new Date();
+  const expiredLeases: { publicKey: string; lease: LeaseType }[] = [];
+  for (const publicKey in context.db.leases) {
+    const lease = context.db.leases[publicKey];
+    if (lease.expiration > now) {
+      continue;
+    }
+    expiredLeases.push({ publicKey, lease });
+  }
+  // FIXME: fix async/await in loops
+  expiredLeases.forEach(async ({ publicKey, lease }) => {
+    const session = context.mut.sessions[publicKey];
+    if (!context.mut.cjdns) {
+      throw new Error("cjdns is missing");
+    }
+    if (!session) {
+      console.error(`No known session for ${publicKey}`);
+      // continue;
+    } else {
+      const cjdns = context.mut.cjdns;
+      console.error(`cleanup() IpTunnel_removeConnection(${session.conn})`);
+      if (!context.cfg.dryrun) {
+        const response = await cjdns.IpTunnel_removeConnection(session.conn);
+        if (response.err !== "none") {
+          throw new Error(`cjdns replied ${response.error}`);
+        }
+      }
+      delete context.mut.sessions[publicKey];
+    }
+  });
+  // NOTE: why is this a separate loop?
+  expiredLeases.forEach(({ publicKey, lease }) => {
+    console.error("cleanup() drop " + publicKey);
+    [IpVersion.IPv4, IpVersion.IPv6].forEach((ipVersion) => {
+      const ipVersionKey = getIpVersionString(ipVersion);
+      if (lease[ipVersionKey].numSlots) {
+        removeSlot({ context, publicKey, ipVersion });
+      }
+      removeLease({ context, publicKey });
+    });
+  });
+  // saveDatabase({ context });
+  console.error("cleanup() done");
+};
+
+export const getLease = async ({
+  context,
+  publicKey,
+}: {
+  context: ContextType;
+  publicKey: string;
+}) => {
+  const lease = await prisma.lease.findUnique({
+    where: { publicKey },
+  });
+  return lease;
+};
+
+export const removeLease = async ({
+  context,
+  publicKey,
+}: {
+  context: ContextType;
+  publicKey: string;
+}) => {
+  await prisma.lease.delete({
+    where: { publicKey },
+  });
+};
+
+export const getLeaseKeys = async ({ context }: { context: ContextType }) => {
+  const leases = await prisma.lease.findMany();
+  const publicKeys = [];
+  leases.forEach((lease) => {
+    publicKeys.push(lease.publicKey);
+  });
+  return Object.keys(context.db.leases);
 };

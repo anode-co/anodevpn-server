@@ -1,13 +1,9 @@
-import Http from "http";
 import { ContextType, coordinatorPublicKey } from "./types";
-import { useDatabase } from "./useDatabase";
-import { config } from "./config";
-import { getComputedConfig } from "./getComputedConfig";
-import { syncSessions } from "./syncSessions";
-import { useCjdns } from "./useCjdns";
-import { pruneLeases } from "./pruneLeases";
-const { checkCjdns } = useCjdns();
-import { useExpress } from "./useExpress";
+import { getComputedConfig, config } from "./vpnserver/config";
+import { syncSessions } from "./vpnserver/session";
+import { pruneLeases } from "./vpnserver/leaseManager";
+import { useExpress } from "./restapi/express";
+import { checkCjdns } from "./vpnserver/cjdns";
 
 const checkLoop = ({ context }: { context: ContextType }) => {
   const loopTimeoutMillis = 10 * 1000; // 10 seconds
@@ -33,12 +29,12 @@ const again = async ({ context }: { context: ContextType }) => {
 const main = async () => {
   // TODO: convert database to sqlite
   let ctx: ContextType;
-  const { readDatabase } = useDatabase();
+  // const { readDatabase } = useDatabase();
 
-  const db = await readDatabase();
+  // const db = await readDatabase();
   const context: ContextType = {
     cfg: config,
-    db,
+    db: undefined,
     cc: getComputedConfig(config),
     mut: {
       externalConfigs: {},

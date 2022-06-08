@@ -1,36 +1,19 @@
-import { ContextType } from "./types";
+import { ContextType, RequestClientAuthorizationPayloadType } from "../types";
 import express from "express";
-import { useDatabase } from "./useDatabase";
-const { saveDatabase, getLease } = useDatabase();
-const app = express();
-app.use(express.json());
+import { getLease, allocateLease } from "../vpnserver/leaseManager";
 
-// FIXME: Use this method:
-// https://github.com/anode-co/anodevpn-server/blob/c3a798122895b9349b0b081e038e805c5f0563b7/index.js#L404
-const allocateLease = ({
-  context,
-  publicKey,
-}: {
-  context: ContextType;
-  publicKey: string;
-}) => {};
+const router = express.Router();
 
-type RequestClientAuthorizationPayload = {
-  signature: {
-    publicKey: string;
-  };
-};
-
-const requestClientAuthorization = ({
+const requestClientAuthorization = async ({
   context,
   req,
 }: {
   context: ContextType;
   req: express.Request;
-}): { method: string; expiration: Date } => {
+}): Promise<{ method: string; expiration: Date }> => {
   // TODO: verify authorization headers: see needsAuth()
   // TODO: verify the data in this request
-  const { signature }: RequestClientAuthorizationPayload = req.body;
+  const { signature }: RequestClientAuthorizationPayloadType = req.body;
   // check for authorization header
   // TODO: put this in an authorization method
   const authorization = req.headers["authorization"];
@@ -64,7 +47,7 @@ const requestClientAuthorization = ({
         `client (${clientPublicKey}) or coordinator (${coordinatorPublicKey}) (signed by ${signature.publicKey})`
     );
   }
-  const lease = getLease({ context, publicKey: clientPublicKey });
+  const lease = await getLease({ context, publicKey: clientPublicKey });
   console.error(`Request from ${clientPublicKey}`);
   let method: string;
   if (!lease) {
@@ -75,7 +58,7 @@ const requestClientAuthorization = ({
     const expiration = new Date();
     expiration.setDate(expiration.getDate() + 1); // one day
     lease.expiration = expiration;
-    saveDatabase({ context });
+    // saveDatabase({ context });
     method = "update";
   }
   return {
@@ -84,31 +67,15 @@ const requestClientAuthorization = ({
   };
 };
 
-export function useExpress() {
-  const startServer = async ({
-    context,
-    port,
-  }: {
-    context: ContextType;
-    port: number;
-  }) => {
-    app.get("/", (req: express.Request, res: express.Response) => {
-      res.status(404).json({
-        error: "No such endpoint",
-      });
-    });
+router.use("/", (req: express.Request, res: express.Response) => {
+  res.status(404).json({
+    error: "No such endpoint",
+  });
+});
 
-    app.get(
-      "/api/0.3/server/authorize",
-      async (req: express.Request, res: express.Response) => {
-        return requestClientAuthorization({ context, req });
-      }
-    );
-    app.listen(port, () => {
-      console.log(`Listening on port ${port}`);
-    });
-    return app;
-  };
-
-  return { startServer };
-}
+router.use(
+  "/api/0.3/server/authorize",
+  async (req: express.Request, res: express.Response) => {
+    return requestClientAuthorization({ context: undefined, req });
+  }
+);

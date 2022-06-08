@@ -1,0 +1,24 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Lease {
+  publicKey    String   @unique
+  ipv4NumSlots Int      @default(value: 0)
+  ipv6NumSlots Int      @default(value: 0)
+  expiration   DateTime
+}
+
+model Slot {
+  publicKey String @unique
+  number    Int    @default(value: 0)
+  ipVersion String
+}

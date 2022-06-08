@@ -4,12 +4,15 @@ import {
   LeaseType,
   CjdnsConnectionType,
   IpVersion,
-} from "./types";
-import { useDatabase } from "./useDatabase";
-import { addLease } from "./addLease";
-const { getLease, getLeaseKeys, setSlots, removeSlot } = useDatabase();
-import { getAddressForSlot, getSlotForAddress } from "./addLease";
-import { getIpVersionString } from "./getComputedConfig";
+} from "../types";
+import { getLease, addLease, getLeaseKeys } from "./leaseManager";
+import {
+  setSlots,
+  removeSlot,
+  getSlotForAddress,
+  getAddressForSlot,
+} from "./slot";
+import { getIpVersionString } from "./config";
 
 type SyncSessionsProps = {
   context: ContextType;
@@ -93,7 +96,7 @@ export const syncSessions = async ({
               context,
               ipVersion,
               publicKey: `${connection[ipVersionKey].numSlots}`,
-              numSlots: 1,
+              number: 1,
             });
           }
         }
@@ -107,9 +110,9 @@ export const syncSessions = async ({
     }
 
     context.mut.externalConfigs = externalConfigs;
-    const leaseKeys = getLeaseKeys({ context });
+    const leaseKeys = await getLeaseKeys({ context });
     const leasesNeeded: { [key: string]: LeaseType } = {};
-    leaseKeys.forEach((key: string) => {
+    leaseKeys.forEach(async (key: string) => {
       const number = connectionNumberKeyLookup[key];
       // move to next key if no number found
       if (!number) {
@@ -121,11 +124,11 @@ export const syncSessions = async ({
         leasesNeeded[key] = context.db.leases[key];
         return;
       }
-      const lease = getLease({ context, publicKey: connection.key });
+      const lease = await getLease({ context, publicKey: connection.key });
       console.error(
         `syncSessions() detected lease for ${key} at connection num ${connection.number}`
       );
-      [IpVersion.IPv4, IpVersion.IPv6].forEach((ipVersion) => {
+      [IpVersion.IPv4, IpVersion.IPv6].forEach(async (ipVersion) => {
         const ipVersionKey = getIpVersionString(ipVersion);
         if (connection[ipVersionKey].address && context.cfg[ipVersionKey]) {
           if (
@@ -147,7 +150,7 @@ export const syncSessions = async ({
             console.error(
               `syncSessions() Warning: change of address for [${connection.key}] [${oldAddr}] -> [${connection[ipVersionKey].address}] [${connection[ipVersionKey].numSlots}] -> [${lease[ipVersion].numSlots}]`
             );
-            removeSlot({
+            await removeSlot({
               context,
               publicKey: lease[ipVersionKey].numSlots,
               ipVersion,

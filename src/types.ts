@@ -108,3 +108,9 @@ export type ErrorType = {
   code: number;
   error: string;
 };
+
+export type RequestClientAuthorizationPayloadType = {
+  signature: {
+    publicKey: string;
+  };
+};
