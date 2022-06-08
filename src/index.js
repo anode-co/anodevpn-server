@@ -778,7 +778,7 @@ const main = () => {
           sessions: {},
           cjdns: undefined,
           coordinatorPubkey:
-            "1y7k7zb64f242hvv8mht54ssvgcqdfzbxrng5uz7qpgu7fkjudd0.k",
+            "929cwrjn11muk4cs5pwkdc5f56hu475wrlhq90pb9g38pp447640.k",
         },
       });
     })
