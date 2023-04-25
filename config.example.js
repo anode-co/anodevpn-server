@@ -10,6 +10,6 @@ module.exports = {
         networkSize: 0,
         prefix: '2c0f:f930:0002::/48',
     },
-    serverPort: 8099,
+    serverPort: process.env.PKTEER_SERVER_PORT || 8099,
     dryrun: true,
 };
