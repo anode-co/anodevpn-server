@@ -12,7 +12,8 @@
     "cjdnsadmin": "^1.0.3",
     "ipaddr.js": "^1.9.1",
     "minimist": "^1.2.5",
-    "nthen": "^0.1.10"
+    "nthen": "^0.1.10",
+    "axios": "^0.15.3"
   },
   "devDependencies": {
     "jshint": "^2.11.1"

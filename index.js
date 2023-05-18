@@ -8,6 +8,9 @@ const IpAddr = require('ipaddr.js');
 const Cjdns = require('cjdnsadmin');
 const nThen = require('nthen');
 
+const axios = require('axios');
+const { exec } = require('child_process');
+
 /*::
 const BigInt = (n:number|string)=>Number(n);
 type NetConfig_t = {
@@ -472,6 +475,103 @@ const httpRequestAuth = (sess) => {
         }
     }));
 };
+
+const httpRequestPremium = (sess) => {
+    console.log("---- Premium request ------");
+    const { req, res } = sess;
+
+    if (req.method !== 'POST') {
+        return void complete(sess, 400, "Bad Request");
+    }
+
+    let body = '';
+    req.on('data', (chunk) => {
+        body += chunk;
+    });
+
+    req.on('end', () => {
+        try {
+            const request = JSON.parse(body);
+
+            if (!request.ip) {
+                return void complete(sess, 400, "Missing 'ip' property");
+            }
+            console.log(`from ip: ${request.ip}`);
+            // Read the existing clients.json file
+            Fs.readFile('clients.json', 'utf8', (err, data) => {
+                if (err) {
+                    console.error(err);
+                    return;
+                }
+
+                let clients = JSON.parse(data);
+                let ipExists = false;
+                const currentTime = Date.now();
+                for (let i = 0; i < clients.length; i++) {
+                    if (clients[i].ip === request.ip) { 
+                        console.log(`IP already exists`);
+                        ipExists = true;
+                        clients[i].duration = 1; 
+                        clients[i].time = currentTime;
+                        break;
+                    }
+                }
+                if (!ipExists) {
+                    console.log(`IP did not match exists`);
+                    const newClient = { ip: request.ip, duration: 1, time: currentTime };
+                    clients.push(newClient);
+                } 
+                // Save the updated clients.json file
+                Fs.writeFile('clients.json', JSON.stringify(clients), 'utf8', (err) => {
+                    if (err) {
+                        console.error(err);
+                        return;
+                    }
+                });
+                const envVars = {
+                    PKTEER_IP: request.ip,
+                    PKTEER_PAID: 'true'
+                };
+                const envVarString = Object.entries(envVars).map(([key, value]) => `${key}=${value}`).join(' ');
+                //-e "PKTEER_DURATION=$2" -e "PKTEER_CONN_TIME=$3"
+                const command = `/server/monitor_cjdns.sh`;
+                exec(`${envVarString} ${command}`, (err, stdout, stderr) => {
+                    if (err) {
+                        console.error(err);
+                        return;
+                    }
+            
+                    // Handle the output of the handle_premium.js script if needed
+                    console.log(stdout);
+                    console.error(stderr);
+                    return void complete(sess, 200, null);
+                });
+            });
+        } catch (error) {
+            console.error(`Error parsing JSON: ${error}`);
+            return void complete(sess, 400, "Invalid JSON");
+        }
+    });
+};
+
+const httpRequestPremiumAddress = (sess) => {
+    console.log("---- Premium Address request ------");
+    const { req, res } = sess;
+    axios.post('http://localhost:8080/api/v1/wallet/address/create', {}, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Response:', response.data);
+        return void complete(sess, 200, null, response.data);
+    })
+    .catch(error => {
+        console.error('Error:', error.message);
+        return void complete(sess, 500, error.message);
+    });
+};
+
 const httpReq = (ctx, req, res) => {
     console.error(`req ${req.method} ${req.url}`);
     const sess = {
@@ -484,6 +584,12 @@ const httpReq = (ctx, req, res) => {
     };
     if (req.url === '/api/0.3/server/authorize/') {
         return void httpRequestAuth(sess);
+    }
+    if (req.url === '/api/0.4/server/premium/') {
+        return void httpRequestPremium(sess);
+    }
+    if (req.url === '/api/0.4/server/premium/address/') {
+        return void httpRequestPremiumAddress(sess);
     }
     return void complete(sess, 404, "no such endpoint");
 };
