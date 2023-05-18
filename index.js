@@ -564,7 +564,11 @@ const httpRequestPremiumAddress = (sess) => {
     })
     .then(response => {
         console.log('Response:', response.data);
-        return void complete(sess, 200, null, response.data);
+        const modifiedResponse = {
+            ...response.data,
+            amount: 100
+        };
+        return void complete(sess, 200, null, modifiedResponse);
     })
     .catch(error => {
         console.error('Error:', error.message);
