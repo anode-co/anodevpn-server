@@ -566,7 +566,7 @@ const httpRequestPremiumAddress = (sess) => {
         console.log('Response:', response.data);
         const modifiedResponse = {
             ...response.data,
-            amount: 100
+            amount: parseInt(process.env.PKTEER_PREMIUM_PRICE, 10)
         };
         return void complete(sess, 200, null, modifiedResponse);
     })
