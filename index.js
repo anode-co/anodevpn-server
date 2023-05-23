@@ -476,6 +476,27 @@ const httpRequestAuth = (sess) => {
     }));
 };
 
+const broadcastTransaction = (sess, transaction) => {
+    console.log("---- Broadcast Transaction ------");
+    if (!transaction) {
+        return void complete(sess, 400, "Missing 'transaction' property");
+    }
+    const { req, res } = sess;
+    axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": transaction }, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Response:', response.data);
+        return void complete(sess, 200, null, response.data);
+    })
+    .catch(error => {
+        console.error('Error:', error.message);
+        return void complete(sess, 500, error.message);
+    });
+}
+
 const httpRequestPremium = (sess) => {
     console.log("---- Premium request ------");
     const { req, res } = sess;
@@ -497,6 +518,9 @@ const httpRequestPremium = (sess) => {
                 return void complete(sess, 400, "Missing 'ip' property");
             }
             console.log(`from ip: ${request.ip}`);
+
+            broadcastTransaction(sess, request.transaction);
+            
             // Read the existing clients.json file
             Fs.readFile('clients.json', 'utf8', (err, data) => {
                 if (err) {
@@ -513,12 +537,13 @@ const httpRequestPremium = (sess) => {
                         ipExists = true;
                         clients[i].duration = 1; 
                         clients[i].time = currentTime;
+                        clients[i].transaction = request.transaction;
                         break;
                     }
                 }
                 if (!ipExists) {
                     console.log(`IP did not match exists`);
-                    const newClient = { ip: request.ip, duration: 1, time: currentTime };
+                    const newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction };
                     clients.push(newClient);
                 } 
                 // Save the updated clients.json file
