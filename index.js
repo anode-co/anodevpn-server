@@ -476,6 +476,29 @@ const httpRequestAuth = (sess) => {
     }));
 };
 
+const broadcastTransaction = (sess, transaction) => {
+    console.log("---- Broadcast Transaction ------");
+    if (!transaction) {
+        return void complete(sess, 400, "Missing 'transaction' property");
+    }
+    const { req, res } = sess;
+
+    const byteArray = Uint8Array.from(Buffer.from(transaction, 'base64'));
+    axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": Array.from(byteArray) }, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Response bcasttransaction:', response.data);
+        return;
+    })
+    .catch(error => {
+        console.error('Error bcasttransaction:', response.message);
+        return void complete(sess, 500, error.message);
+    });
+}
+
 const httpRequestPremium = (sess) => {
     console.log("---- Premium request ------");
     const { req, res } = sess;
@@ -497,6 +520,9 @@ const httpRequestPremium = (sess) => {
                 return void complete(sess, 400, "Missing 'ip' property");
             }
             console.log(`from ip: ${request.ip}`);
+
+            broadcastTransaction(sess, request.transaction);
+            
             // Read the existing clients.json file
             Fs.readFile('clients.json', 'utf8', (err, data) => {
                 if (err) {
@@ -504,30 +530,38 @@ const httpRequestPremium = (sess) => {
                     return;
                 }
 
-                let clients = JSON.parse(data);
-                let ipExists = false;
-                const currentTime = Date.now();
-                for (let i = 0; i < clients.length; i++) {
-                    if (clients[i].ip === request.ip) { 
-                        console.log(`IP already exists`);
-                        ipExists = true;
-                        clients[i].duration = 1; 
-                        clients[i].time = currentTime;
-                        break;
+                let parsedData;
+                try {
+                    parsedData = JSON.parse(data);
+                    let clients = parsedData.clients;
+                    let ipExists = false;
+                    const currentTime = Date.now();
+                    for (let i = 0; i < clients.length; i++) {
+                        if (clients[i].ip === request.ip) { 
+                            console.log(`IP already exists`);
+                            ipExists = true;
+                            clients[i].duration = 1; 
+                            clients[i].time = currentTime;
+                            clients[i].transaction = request.transaction;
+                            break;
+                        }
                     }
+                    if (!ipExists) {
+                        console.log(`IP did not match existing client`);
+                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction };
+                        clients.push(newClient);
+                    } 
+                    // Write the updated data back to clients.json
+                    const updatedData = JSON.stringify(parsedData);
+                    Fs.writeFile('clients.json', updatedData, 'utf8', (err) => {
+                        if (err) {
+                            console.error(err);
+                            return;
+                        }
+                    });
+                } catch (error) {
+                    console.log('Error parsing JSON:', error);
                 }
-                if (!ipExists) {
-                    console.log(`IP did not match exists`);
-                    const newClient = { ip: request.ip, duration: 1, time: currentTime };
-                    clients.push(newClient);
-                } 
-                // Save the updated clients.json file
-                Fs.writeFile('clients.json', JSON.stringify(clients), 'utf8', (err) => {
-                    if (err) {
-                        console.error(err);
-                        return;
-                    }
-                });
                 const envVars = {
                     PKTEER_IP: request.ip,
                     PKTEER_PAID: 'true'
@@ -544,7 +578,11 @@ const httpRequestPremium = (sess) => {
                     // Handle the output of the handle_premium.js script if needed
                     console.log(stdout);
                     console.error(stderr);
-                    return void complete(sess, 200, null);
+                    return void complete(sess, 200, null, 
+                    {
+                        status: "success",
+                        message: "Premium VPN granted"
+                    });
                 });
             });
         } catch (error) {
