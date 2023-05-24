@@ -519,6 +519,9 @@ const httpRequestPremium = (sess) => {
             if (!request.ip) {
                 return void complete(sess, 400, "Missing 'ip' property");
             }
+            if (!request.address) {
+                return void complete(sess, 400, "Missing 'address' property");
+            }
             console.log(`from ip: ${request.ip}`);
 
             broadcastTransaction(sess, request.transaction);
@@ -543,12 +546,13 @@ const httpRequestPremium = (sess) => {
                             clients[i].duration = 1; 
                             clients[i].time = currentTime;
                             clients[i].transaction = request.transaction;
+                            clients[i].address = request.address;
                             break;
                         }
                     }
                     if (!ipExists) {
                         console.log(`IP did not match existing client`);
-                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction };
+                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address };
                         clients.push(newClient);
                     } 
                     // Write the updated data back to clients.json
