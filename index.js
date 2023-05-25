@@ -483,19 +483,19 @@ const broadcastTransaction = (sess, transaction) => {
     }
     const { req, res } = sess;
 
-    const byteArray = Uint8Array.from(Buffer.from(transaction, 'base64'));
-    axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": Array.from(byteArray) }, {
+    const b64txns = Buffer.from(Buffer.from(transaction,'base64').toString('hex'),'utf8').toString('base64')
+    axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": b64txns }, {
         headers: {
           'Content-Type': 'application/json'
         }
     })
     .then(response => {
-        console.log('Response bcasttransaction:', response.data);
-        return;
+        console.log('Response bcasttransaction:', response.data.txnHash);
+        return response.data.txnHash;
     })
     .catch(error => {
-        console.error('Error bcasttransaction:', response.message);
-        return void complete(sess, 500, error.message);
+        console.error('Error bcasttransaction:', error.message);
+        return "";
     });
 }
 
@@ -524,8 +524,10 @@ const httpRequestPremium = (sess) => {
             }
             console.log(`from ip: ${request.ip}`);
 
-            broadcastTransaction(sess, request.transaction);
-            
+            let txnHash = broadcastTransaction(sess, request.transaction);
+            if (!txnHash) {
+                return void complete(sess, 500, "Failed to broadcast transaction");
+            }
             // Read the existing clients.json file
             Fs.readFile('clients.json', 'utf8', (err, data) => {
                 if (err) {
@@ -541,18 +543,19 @@ const httpRequestPremium = (sess) => {
                     const currentTime = Date.now();
                     for (let i = 0; i < clients.length; i++) {
                         if (clients[i].ip === request.ip) { 
-                            console.log(`IP already exists`);
+                            console.log(`Overwriting existing client information`);
                             ipExists = true;
                             clients[i].duration = 1; 
                             clients[i].time = currentTime;
                             clients[i].transaction = request.transaction;
+                            clients[i].txid = txnHash;
                             clients[i].address = request.address;
                             break;
                         }
                     }
                     if (!ipExists) {
-                        console.log(`IP did not match existing client`);
-                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address };
+                        console.log(`Appending new client information`);
+                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: txnHash };
                         clients.push(newClient);
                     } 
                     // Write the updated data back to clients.json
