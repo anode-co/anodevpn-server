@@ -476,28 +476,26 @@ const httpRequestAuth = (sess) => {
     }));
 };
 
-const broadcastTransaction = (sess, transaction) => {
+const broadcastTransaction = async (sess, transaction) => {
     console.log("---- Broadcast Transaction ------");
     if (!transaction) {
         return void complete(sess, 400, "Missing 'transaction' property");
     }
     const { req, res } = sess;
-
-    const b64txns = Buffer.from(Buffer.from(transaction,'base64').toString('hex'),'utf8').toString('base64')
-    axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": b64txns }, {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
+    try {
+        const b64txns = Buffer.from(Buffer.from(transaction,'base64').toString('hex'),'utf8').toString('base64')
+        const response = await axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": b64txns }, {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+        });
         console.log('Response bcasttransaction:', response.data.txnHash);
         return response.data.txnHash;
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error bcasttransaction:', error.message);
         return "";
-    });
-}
+    }  
+};
 
 const httpRequestPremium = (sess) => {
     console.log("---- Premium request ------");
