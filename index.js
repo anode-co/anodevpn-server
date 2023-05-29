@@ -561,13 +561,12 @@ const httpRequestPremium = (sess) => {
             if (!request.ip) {
                 return void complete(sess, 400, "Missing 'ip' property");
             }
-            //TODO: Address can be empty in case of a reconnecting client
             if (!request.address) {
                 return void complete(sess, 400, "Missing 'address' property");
             }
             console.log(`from ip: ${request.ip}`);
-
-            broadcastTransaction(sess, transaction)
+            //TODO: for a reconnecting client, there will be no transaction, no need to broadcast
+            broadcastTransaction(sess, request.transaction)
             .then(txnHash => {
                 resolveBcastTxns(txnHash);
             })
