@@ -484,7 +484,7 @@ const broadcastTransaction = async (sess, transaction) => {
     const { req, res } = sess;
     try {
         const b64txns = Buffer.from(Buffer.from(transaction,'base64').toString('hex'),'utf8').toString('base64')
-        const response = await axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": b64txns }, {
+        const response = axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": b64txns }, {
             headers: {
               'Content-Type': 'application/json'
             }
@@ -496,6 +496,50 @@ const broadcastTransaction = async (sess, transaction) => {
         throw error;
     }  
 };
+
+function resolveBcastTxns(txnHash) {
+    Fs.readFile('clients.json', 'utf8', (err, data) => {
+        if (err) {
+            console.error(err);
+            return;
+        }
+
+        let parsedData;
+        try {
+            parsedData = JSON.parse(data);
+            let clients = parsedData.clients;
+            let ipExists = false;
+            const currentTime = Date.now();
+            for (let i = 0; i < clients.length; i++) {
+                if (clients[i].ip === request.ip) { 
+                    console.log(`Overwriting existing client information`);
+                    ipExists = true;
+                    clients[i].duration = 1; 
+                    clients[i].time = currentTime;
+                    clients[i].transaction = request.transaction;
+                    clients[i].txid = txnHash;
+                    clients[i].address = request.address;
+                    break;
+                }
+            }
+            if (!ipExists) {
+                console.log(`Appending new client information`);
+                var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: txnHash };
+                clients.push(newClient);
+            } 
+            // Write the updated data back to clients.json
+            const updatedData = JSON.stringify(parsedData);
+            Fs.writeFile('clients.json', updatedData, 'utf8', (err) => {
+                if (err) {
+                    console.error(err);
+                    return;
+                }
+            });
+        } catch (error) {
+            console.log('Error parsing JSON:', error);
+        }
+    });
+}
 
 const httpRequestPremium = (sess) => {
     console.log("---- Premium request ------");
@@ -517,88 +561,55 @@ const httpRequestPremium = (sess) => {
             if (!request.ip) {
                 return void complete(sess, 400, "Missing 'ip' property");
             }
+            //TODO: Address can be empty in case of a reconnecting client
             if (!request.address) {
                 return void complete(sess, 400, "Missing 'address' property");
             }
             console.log(`from ip: ${request.ip}`);
 
-            broadcastTransaction(sess, request.transaction)
+            broadcastTransaction(sess, transaction)
             .then(txnHash => {
-                // Read the existing clients.json file
-                Fs.readFile('clients.json', 'utf8', (err, data) => {
-                    if (err) {
-                        console.error(err);
-                        return;
-                    }
-
-                    let parsedData;
-                    try {
-                        parsedData = JSON.parse(data);
-                        let clients = parsedData.clients;
-                        let ipExists = false;
-                        const currentTime = Date.now();
-                        for (let i = 0; i < clients.length; i++) {
-                            if (clients[i].ip === request.ip) { 
-                                console.log(`Overwriting existing client information`);
-                                ipExists = true;
-                                clients[i].duration = 1; 
-                                clients[i].time = currentTime;
-                                clients[i].transaction = request.transaction;
-                                clients[i].txid = txnHash;
-                                clients[i].address = request.address;
-                                break;
-                            }
-                        }
-                        if (!ipExists) {
-                            console.log(`Appending new client information`);
-                            var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: txnHash };
-                            clients.push(newClient);
-                        } 
-                        // Write the updated data back to clients.json
-                        const updatedData = JSON.stringify(parsedData);
-                        Fs.writeFile('clients.json', updatedData, 'utf8', (err) => {
-                            if (err) {
-                                console.error(err);
-                                return;
-                            }
-                        });
-                    } catch (error) {
-                        console.log('Error parsing JSON:', error);
-                    }
-                    const envVars = {
-                        PKTEER_IP: request.ip,
-                        PKTEER_PAID: 'true'
-                    };
-                    const envVarString = Object.entries(envVars).map(([key, value]) => `${key}=${value}`).join(' ');
-                    //-e "PKTEER_DURATION=$2" -e "PKTEER_CONN_TIME=$3"
-                    const command = `/server/monitor_cjdns.sh`;
-                    exec(`${envVarString} ${command}`, (err, stdout, stderr) => {
-                        if (err) {
-                            console.error(err);
-                            return;
-                        }
-                
-                        // Handle the output of the handle_premium.js script if needed
-                        console.log(stdout);
-                        console.error(stderr);
-                        return void complete(sess, 200, null, 
-                        {
-                            status: "success",
-                            message: "Premium VPN granted"
-                        });
-                    });
-                });
+                resolveBcastTxns(txnHash);
             })
-            .catch(error => {
-                console.error('Error broadcastTransaction:', error.message);
-                return void complete(sess, 500, "Failed to broadcast transaction");
+            .catch(err => {
+                console.error(`Error broadcasting transaction: ${err}`);
+                reject(err);
             });
+
+            // Give Premium regardless of bcasttransaction success
+            // The handler will drop client after a few minutes if the transaction is not confirmed
+            givePremium(sess, request.ip);
         } catch (error) {
             console.error(`Error parsing JSON: ${error}`);
             return void complete(sess, 400, "Invalid JSON");
         }
     });
 };
+
+const givePremium = (sess, ip) => {
+    const envVars = {
+        PKTEER_IP: ip,
+        PKTEER_PAID: 'true'
+    };
+    const envVarString = Object.entries(envVars).map(([key, value]) => `${key}=${value}`).join(' ');
+    //-e "PKTEER_DURATION=$2" -e "PKTEER_CONN_TIME=$3"
+    const command = `/server/monitor_cjdns.sh`;
+    exec(`${envVarString} ${command}`, (err, stdout, stderr) => {
+        if (err) {
+            console.error(err);
+            return;
+        }
+
+        // Handle the output of the handle_premium.js script if needed
+        console.log(stdout);
+        console.error(stderr);
+        return void complete(sess, 200, null, 
+        {
+            status: "success",
+            message: "Premium VPN granted"
+        });
+    });
+}
 
 const httpRequestPremiumAddress = (sess) => {
     console.log("---- Premium Address request ------");
