@@ -565,16 +565,18 @@ const httpRequestPremium = (sess) => {
                 return void complete(sess, 400, "Missing 'address' property");
             }
             console.log(`from ip: ${request.ip}`);
-            //TODO: for a reconnecting client, there will be no transaction, no need to broadcast
-            broadcastTransaction(sess, request.transaction)
-            .then(txnHash => {
-                resolveBcastTxns(txnHash);
-            })
-            .catch(err => {
-                console.error(`Error broadcasting transaction: ${err}`);
-                reject(err);
-            });
-
+            
+            // If transaction is empty, assume it is a request from existing client
+            if (request.transaction != "") {
+                broadcastTransaction(sess, request.transaction)
+                .then(txnHash => {
+                    resolveBcastTxns(txnHash);
+                })
+                .catch(err => {
+                    console.error(`Error broadcasting transaction: ${err}`);
+                    reject(err);
+                });
+            }
             // Give Premium regardless of bcasttransaction success
             // The handler will drop client after a few minutes if the transaction is not confirmed
             givePremium(sess, request.ip);
