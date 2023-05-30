@@ -539,9 +539,10 @@ const httpRequestPremium = (sess) => {
                         clients.push(newClient);
                     } 
                     // Write the updated data back to json
+                    parsedData.clients = clients;
                     lockfile.lock(clientFile)
                     .then(() => { 
-                        Fs.writeFile(clientFile, JSON.stringify(clients), 'utf8', (err) => {
+                        Fs.writeFile(clientFile, JSON.stringify(parsedData), 'utf8', (err) => {
                             if (err) {
                                 console.error(err);
                                 return;
