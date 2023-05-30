@@ -10,6 +10,7 @@ const nThen = require('nthen');
 
 const axios = require('axios');
 const { exec } = require('child_process');
+const lockfile = require('proper-lockfile');
 
 /*::
 const BigInt = (n:number|string)=>Number(n);
@@ -498,7 +499,8 @@ const broadcastTransaction = async (sess, transaction) => {
 };
 
 function resolveBcastTxns(txnHash) {
-    Fs.readFile('clients.json', 'utf8', (err, data) => {
+    let clientFile = "/server/anodevpn-server/clients.json";
+    Fs.readFile(clientFile, 'utf8', (err, data) => {
         if (err) {
             console.error(err);
             return;
@@ -527,13 +529,16 @@ function resolveBcastTxns(txnHash) {
                 var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: txnHash };
                 clients.push(newClient);
             } 
-            // Write the updated data back to clients.json
+            // Write the updated data back to json
             const updatedData = JSON.stringify(parsedData);
-            Fs.writeFile('clients.json', updatedData, 'utf8', (err) => {
-                if (err) {
-                    console.error(err);
-                    return;
-                }
+            lockfile.lock(filePath, { retries: { retries: 10, minTimeout: 200 } }, (error, release) => {
+                Fs.writeFile(clientFile, updatedData, 'utf8', (err) => {
+                    if (err) {
+                        console.error(err);
+                        return;
+                    }
+                });
+                release();
             });
         } catch (error) {
             console.log('Error parsing JSON:', error);
