@@ -11,6 +11,7 @@ const nThen = require('nthen');
 const axios = require('axios');
 const { exec } = require('child_process');
 const lockfile = require('proper-lockfile');
+const path = require('path');
 
 /*::
 const BigInt = (n:number|string)=>Number(n);
