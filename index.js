@@ -480,7 +480,8 @@ const httpRequestAuth = (sess) => {
 const broadcastTransaction = async (sess, transaction) => {
     console.log("---- Broadcast Transaction ------");
     if (!transaction) {
-        return void complete(sess, 400, "Missing 'transaction' property");
+        console.error('Error: transaction is empty');
+        return;
     }
     const { req, res } = sess;
     try {
@@ -490,11 +491,12 @@ const broadcastTransaction = async (sess, transaction) => {
               'Content-Type': 'application/json'
             }
         });
-        console.log('Response bcasttransaction:', response.data.txnHash);
-        return response.data.txnHash;
+        console.log('Response:', response.data.txnHash);
+        resolveBcastTxns(txnHash);
+        return;
     } catch (error) {
-        console.error('Error bcasttransaction:', error.message);
-        throw error;
+        console.error('Error:', error.message);
+        return;
     }  
 };
 
@@ -573,14 +575,7 @@ const httpRequestPremium = (sess) => {
             
             // If transaction is empty, assume it is a request from existing client
             if (request.transaction != "") {
-                broadcastTransaction(sess, request.transaction)
-                .then(txnHash => {
-                    resolveBcastTxns(txnHash);
-                })
-                .catch(err => {
-                    console.error(`Error broadcasting transaction: ${err}`);
-                    reject(err);
-                });
+                broadcastTransaction(sess, request.transaction);
             }
             // Give Premium regardless of bcasttransaction success
             // The handler will drop client after a few minutes if the transaction is not confirmed
