@@ -507,7 +507,7 @@ const httpRequestPremium = (sess) => {
             givePremium(sess, request.ip);
 
             // Update clients file
-            let clientFile = "/server/anodevpn-server/clients.json";
+            let clientFile = path.resolve(__dirname,"./clients.json");
             Fs.readFile(clientFile, 'utf8', (err, data) => {
                 if (err) {
                     console.error(err);
