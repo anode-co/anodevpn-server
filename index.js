@@ -534,7 +534,7 @@ const httpRequestPremium = (sess) => {
                     }
                     if (!ipExists) {
                         console.log(`Appending new client information`);
-                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: txnHash };
+                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: "" };
                         clients.push(newClient);
                     } 
                     // Write the updated data back to json
