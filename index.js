@@ -477,77 +477,6 @@ const httpRequestAuth = (sess) => {
     }));
 };
 
-const broadcastTransaction = async (sess, transaction) => {
-    console.log("---- Broadcast Transaction ------");
-    if (!transaction) {
-        console.error('Error: transaction is empty');
-        return;
-    }
-    const { req, res } = sess;
-    try {
-        const b64txns = Buffer.from(Buffer.from(transaction,'base64').toString('hex'),'utf8').toString('base64')
-        const response = axios.post('http://localhost:8080/api/v1/neutrino/bcasttransaction', { "tx": b64txns }, {
-            headers: {
-              'Content-Type': 'application/json'
-            }
-        });
-        console.log('Response:', response.data.txnHash);
-        resolveBcastTxns(txnHash);
-        return;
-    } catch (error) {
-        console.error('Error:', error.message);
-        return;
-    }  
-};
-
-function resolveBcastTxns(txnHash) {
-    let clientFile = "/server/anodevpn-server/clients.json";
-    Fs.readFile(clientFile, 'utf8', (err, data) => {
-        if (err) {
-            console.error(err);
-            return;
-        }
-
-        let parsedData;
-        try {
-            parsedData = JSON.parse(data);
-            let clients = parsedData.clients;
-            let ipExists = false;
-            const currentTime = Date.now();
-            for (let i = 0; i < clients.length; i++) {
-                if (clients[i].ip === request.ip) { 
-                    console.log(`Overwriting existing client information`);
-                    ipExists = true;
-                    clients[i].duration = 1; 
-                    clients[i].time = currentTime;
-                    clients[i].transaction = request.transaction;
-                    clients[i].txid = txnHash;
-                    clients[i].address = request.address;
-                    break;
-                }
-            }
-            if (!ipExists) {
-                console.log(`Appending new client information`);
-                var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: txnHash };
-                clients.push(newClient);
-            } 
-            // Write the updated data back to json
-            const updatedData = JSON.stringify(parsedData);
-            lockfile.lock(filePath, { retries: { retries: 10, minTimeout: 200 } }, (error, release) => {
-                Fs.writeFile(clientFile, updatedData, 'utf8', (err) => {
-                    if (err) {
-                        console.error(err);
-                        return;
-                    }
-                });
-                release();
-            });
-        } catch (error) {
-            console.log('Error parsing JSON:', error);
-        }
-    });
-}
-
 const httpRequestPremium = (sess) => {
     console.log("---- Premium request ------");
     const { req, res } = sess;
@@ -573,13 +502,56 @@ const httpRequestPremium = (sess) => {
             }
             console.log(`from ip: ${request.ip}`);
             
-            // If transaction is empty, assume it is a request from existing client
-            if (request.transaction != "") {
-                broadcastTransaction(sess, request.transaction);
-            }
             // Give Premium regardless of bcasttransaction success
             // The handler will drop client after a few minutes if the transaction is not confirmed
             givePremium(sess, request.ip);
+
+            // Update clients file
+            let clientFile = "/server/anodevpn-server/clients.json";
+            Fs.readFile(clientFile, 'utf8', (err, data) => {
+                if (err) {
+                    console.error(err);
+                    return;
+                }
+
+                let parsedData;
+                try {
+                    parsedData = JSON.parse(data);
+                    let clients = parsedData.clients;
+                    let ipExists = false;
+                    const currentTime = Date.now();
+                    for (let i = 0; i < clients.length; i++) {
+                        if (clients[i].ip === request.ip) { 
+                            console.log(`Overwriting existing client information`);
+                            ipExists = true;
+                            clients[i].duration = 1; 
+                            clients[i].time = currentTime;
+                            clients[i].transaction = request.transaction;
+                            clients[i].txid = ""; // Let premium_handler handle the broadcast transaction, by leaving this empty
+                            clients[i].address = request.address;
+                            break;
+                        }
+                    }
+                    if (!ipExists) {
+                        console.log(`Appending new client information`);
+                        var newClient = { ip: request.ip, duration: 1, time: currentTime, transaction: request.transaction, address: request.address, txid: txnHash };
+                        clients.push(newClient);
+                    } 
+                    // Write the updated data back to json
+                    const updatedData = JSON.stringify(parsedData);
+                    lockfile.lock(filePath, { retries: { retries: 10, minTimeout: 200 } }, (error, release) => {
+                        Fs.writeFile(clientFile, updatedData, 'utf8', (err) => {
+                            if (err) {
+                                console.error(err);
+                                return;
+                            }
+                        });
+                        release();
+                    });
+                } catch (error) {
+                    console.log('Error parsing JSON:', error);
+                }
+            });
         } catch (error) {
             console.error(`Error parsing JSON: ${error}`);
             return void complete(sess, 400, "Invalid JSON");
