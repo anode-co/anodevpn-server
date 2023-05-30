@@ -539,15 +539,16 @@ const httpRequestPremium = (sess) => {
                         clients.push(newClient);
                     } 
                     // Write the updated data back to json
-                    const updatedData = JSON.stringify(parsedData);
-                    lockfile.lock(filePath, { retries: { retries: 10, minTimeout: 200 } }, (error, release) => {
-                        Fs.writeFile(clientFile, updatedData, 'utf8', (err) => {
+                    lockfile.lock(clientFile)
+                    .then(() => { 
+                        Fs.writeFile(clientFile, JSON.stringify(clients), 'utf8', (err) => {
                             if (err) {
                                 console.error(err);
                                 return;
                             }
+                            console.log(`Updated ${clientFile}`);
                         });
-                        release();
+                        return lockfile.unlock(clientFile);
                     });
                 } catch (error) {
                     console.log('Error parsing JSON:', error);
