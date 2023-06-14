@@ -1,9 +1,9 @@
 /*@flow*/
 module.exports = {
     cfg4: {
-        allocSize: 32,
+        allocSize: 16,
         networkSize: 0,
-        prefix: '10.66.0.0/16',
+        prefix: '10.0.0.0/8',
     },
     cfg6: {
         allocSize: 64,
