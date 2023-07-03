@@ -53,9 +53,9 @@ Each system is diffferent, but here's an example for Debian (replace `eth0` with
 
 ```console
 $ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-$ iiptables -A FORWARD -i tun0 -j ACCEPT
-$ iiptables -A FORWARD -o tun0 -j ACCEPT
-$ isudo sysctl -w net.ipv4.ip_forward=1
+$ iptables -A FORWARD -i tun0 -j ACCEPT
+$ iptables -A FORWARD -o tun0 -j ACCEPT
+$ sudo sysctl -w net.ipv4.ip_forward=1
 iptables-save
 ```
 
