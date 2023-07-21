@@ -12,6 +12,7 @@ const axios = require('axios');
 const { exec } = require('child_process');
 const lockfile = require('proper-lockfile');
 const path = require('path');
+const httpProxy = require('http-proxy');
 
 /*::
 const BigInt = (n:number|string)=>Number(n);
@@ -627,6 +628,16 @@ const httpReq = (ctx, req, res) => {
     }
     if (req.url === '/api/0.4/server/premium/address/') {
         return void httpRequestPremiumAddress(sess);
+    }
+    if (req.url === '/metrics') {
+        const target = 'http://localhost:9100';
+        const prometheus = httpProxy.createProxyServer({});
+        try {
+            return prometheus.web(req, res, { target });
+        } catch (error) {
+            console.error('Error occurred while proxying request:', error);
+            return void complete(sess, 500, "failed to proxy request");
+        }
     }
     return void complete(sess, 404, "no such endpoint");
 };
