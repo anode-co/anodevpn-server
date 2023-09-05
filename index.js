@@ -631,8 +631,9 @@ const httpReq = (ctx, req, res) => {
     }
     if (req.url === '/metrics') {
         const target = 'http://localhost:9100';
-        const prometheus = httpProxy.createProxyServer({});
+        const prometheus = httpProxy.createProxyServer({ timeout: 10000});
         try {
+            clearTimeout(sess.timeout);
             return prometheus.web(req, res, { target });
         } catch (error) {
             console.error('Error occurred while proxying request:', error);
