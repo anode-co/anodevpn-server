@@ -611,7 +611,6 @@ const httpRequestPremiumAddress = (sess) => {
 };
 
 const httpReq = (ctx, req, res) => {
-    console.error(`req ${req.method} ${req.url}`);
     const sess = {
         ctx,
         req,
@@ -640,6 +639,10 @@ const httpReq = (ctx, req, res) => {
             return void complete(sess, 500, "failed to proxy request");
         }
     }
+    if (req.url === '/healthcheck') {
+        return void complete(sess, 200, "OK");
+    }
+    console.error(`req ${req.method} ${req.url}`);
     return void complete(sess, 404, "no such endpoint");
 };
 
