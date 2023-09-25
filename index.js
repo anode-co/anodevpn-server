@@ -103,7 +103,9 @@ const complete = (sess /*:Session_t*/, code /*:number*/, error /*:string|null*/,
             if (typeof x !== 'bigint') { return x; }
             return x.toString();
         }, '\t');
-        console.error(`Request result ${code} - ${String(s)}`);
+        if (sess.req.url !== '/healthcheck') {
+            console.error(`Request result ${code} - ${String(s)}`);
+        }
         sess.res.statusCode = code;
         sess.res.end(s);
     }
@@ -640,7 +642,7 @@ const httpReq = (ctx, req, res) => {
         }
     }
     if (req.url === '/healthcheck') {
-        return void complete(sess, 200, "OK");
+        return void complete(sess, 200, null, {});
     }
     console.error(`req ${req.method} ${req.url}`);
     return void complete(sess, 404, "no such endpoint");
