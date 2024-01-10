@@ -14,6 +14,7 @@ const lockfile = require('proper-lockfile');
 const path = require('path');
 const httpProxy = require('http-proxy');
 
+const forbidden_vpn_ports = [22];
 /*::
 const BigInt = (n:number|string)=>Number(n);
 type NetConfig_t = {
@@ -612,6 +613,74 @@ const httpRequestPremiumAddress = (sess) => {
     });
 };
 
+const httpRequestReverseVPN = (sess) => {
+    console.log("---- Reverse VPN request ------");
+    const { req, res } = sess;
+    if (req.method !== 'POST') {
+        return void complete(sess, 400, "Bad Request");
+    }
+    
+    let body = '';
+    req.on('data', (chunk) => {
+        body += chunk;
+    });
+    
+    const clientIP = req.connection.remoteAddress.split(":").pop();
+    req.on('end', () => {
+        try {
+            const request = JSON.parse(body);
+
+            if (!request.port) {
+                console.log('Missing port property');
+                return void complete(sess, 400, "Missing 'port' property");
+            }
+            console.log(`Client IP: ${clientIP} requesting port: ${request.port}`);
+            setReverseVPN(sess, clientIP, request.port);
+        } catch (error) {
+            console.error(`Error parsing JSON: ${error}`);
+            return void complete(sess, 400, "Invalid JSON");
+        }
+    });
+};
+
+const setReverseVPN = (sess, ip, port) => {
+    //Check if port is forbidden
+    if (forbidden_vpn_ports.includes(port)) {
+        console.error(`Port ${port} is forbidden`);
+        return;
+    }
+
+    //Check if port is already allocated
+    exec(`netstat -tuln | grep :${port} || true`, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`exec error: ${error}`);
+            return void complete(sess, 500, "Failed to check ports");
+        }
+        if (stdout) {
+            console.error(`Port ${port} is already allocated`);
+            return void complete(sess, 500, "Port "+port+" is already allocated");
+        }
+        //Add port to nftables
+        exec(`nft add element ip pfi s_reverse_ports { ${port} }`, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`exec error: ${error}`);
+                return void complete(sess, 500, "Failed to allocate port");
+            }
+            console.log(`stdout: ${stdout}`);
+            console.error(`stderr: ${stderr}`);
+        });
+
+        exec(`nft add element ip pfi m_reverse_ports { ${port} : ${ip} }`, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`exec error: ${error}`);
+                return void complete(sess, 500, "Failed to allocate port");
+            }
+            console.log(`stdout: ${stdout}`);
+            console.error(`stderr: ${stderr}`);
+        });
+    });
+};
+
 const httpReq = (ctx, req, res) => {
     const sess = {
         ctx,
@@ -629,6 +698,9 @@ const httpReq = (ctx, req, res) => {
     }
     if (req.url === '/api/0.4/server/premium/address/') {
         return void httpRequestPremiumAddress(sess);
+    }
+    if (req.url === '/api/0.4/server/reversevpn/') {
+        return void httpRequestReverseVPN(sess);
     }
     if (req.url === '/metrics') {
         const target = 'http://localhost:9100';
