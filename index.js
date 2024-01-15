@@ -666,8 +666,6 @@ const setReverseVPN = (sess, ip, port) => {
                 console.error(`exec error: ${error}`);
                 return void complete(sess, 500, "Failed to allocate port");
             }
-            console.log(`stdout: ${stdout}`);
-            console.error(`stderr: ${stderr}`);
         });
 
         exec(`nft add element ip pfi m_reverse_ports { ${port} : ${ip} }`, (error, stdout, stderr) => {
@@ -675,9 +673,8 @@ const setReverseVPN = (sess, ip, port) => {
                 console.error(`exec error: ${error}`);
                 return void complete(sess, 500, "Failed to allocate port");
             }
-            console.log(`stdout: ${stdout}`);
-            console.error(`stderr: ${stderr}`);
         });
+        return void complete(sess, 200, "Port "+port+" allocated for "+ip);
     });
 };
 
