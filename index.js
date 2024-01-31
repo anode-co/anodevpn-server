@@ -625,7 +625,6 @@ const httpRequestReverseVPN = (sess) => {
         body += chunk;
     });
     
-    const clientIP = req.connection.remoteAddress.split(":").pop();
     req.on('end', () => {
         try {
             const request = JSON.parse(body);
@@ -634,8 +633,12 @@ const httpRequestReverseVPN = (sess) => {
                 console.log('Missing port property');
                 return void complete(sess, 400, "Missing 'port' property");
             }
-            console.log(`Client IP: ${clientIP} requesting port: ${request.port}`);
-            setReverseVPN(sess, clientIP, request.port);
+            if (!request.ip) {
+                console.log('Missing ip property');
+                return void complete(sess, 400, "Missing 'ip' property");
+            }
+            console.log(`Client IP: ${request.ip} requesting port: ${request.port}`);
+            setReverseVPN(sess, request.ip, request.port);
         } catch (error) {
             console.error(`Error parsing JSON: ${error}`);
             return void complete(sess, 400, "Invalid JSON");
@@ -674,7 +677,10 @@ const setReverseVPN = (sess, ip, port) => {
                 return void complete(sess, 500, "Failed to allocate port");
             }
         });
-        return void complete(sess, 200, "Port "+port+" allocated for "+ip);
+        return void complete(sess, 200, null, {
+            status: "success",
+            message: "Port "+port+" allocated for "+ip
+        });
     });
 };
 
