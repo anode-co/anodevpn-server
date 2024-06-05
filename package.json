@@ -13,7 +13,7 @@
     "ipaddr.js": "^1.9.1",
     "minimist": "^1.2.5",
     "nthen": "^0.1.10",
-    "axios": "^0.15.3"
+    "axios": "^0.28.0"
   },
   "devDependencies": {
     "jshint": "^2.13.6"
