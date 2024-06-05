@@ -1,7 +1,8 @@
 /*@flow*/
 /* global BigInt */
-const Fs = require('fs');
+const vpnfs = require('fs');
 const Http = require('http');
+const Https = require('https');
 const Crypto = require('crypto');
 
 const IpAddr = require('ipaddr.js');
@@ -10,6 +11,7 @@ const nThen = require('nthen');
 
 const axios = require('axios');
 const { exec } = require('child_process');
+const { execSync } = require('child_process');
 const lockfile = require('proper-lockfile');
 const path = require('path');
 const httpProxy = require('http-proxy');
@@ -684,6 +686,304 @@ const setReverseVPN = (sess, ip, port) => {
     });
 };
 
+const httpsGet = (url) => {
+    return new Promise((resolve, reject) => {
+        Https.get(url, (res) => {
+            let data = '';
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+            res.on('end', () => {
+                resolve(JSON.parse(data));
+            });
+        }).on('error', (err) => {
+            reject(err);
+        });
+    });
+};
+
+async function addVpnClient(username) {
+    console.log(`Adding new vpn client ${username}`);
+    console.log(`Generating p12, sswan and mobileconfig files for ${username}`);
+    execSync(`/usr/bin/ikev2.sh --addclient ${username}`, (err, stdout, stderr) => {
+        if (err) {
+            console.error(err);
+            return;
+        }
+    });
+    
+    console.log(`Copying files to /server/vpnclients`);
+    vpnfs.copyFileSync(`/root/${username}.p12`, `/server/vpnclients/${username}.p12`);
+    vpnfs.copyFileSync(`/root/${username}.sswan`, `/server/vpnclients/${username}.sswan`);
+    vpnfs.copyFileSync(`/root/${username}.mobileconfig`, `/server/vpnclients/${username}.mobileconfig`);
+}
+
+const httpRequestVPNAccess = (sess) => {
+    console.log("---- Request VPN Access ------");
+    const { req, res } = sess;
+
+    if (req.method !== 'POST') {
+        return void complete(sess, 400, "Bad Request");
+    }
+
+    let body = '';
+    req.on('data', (chunk) => {
+        body += chunk;
+    });
+
+    req.on('end', async () => {
+        let txid = "";
+        try {
+            const request = JSON.parse(body);
+
+            if (!request.txid) {
+                return void complete(sess, 400, "Missing 'txid' property");
+            }
+            txid = request.txid;
+        } catch (error) {
+            console.error(`Error: ${error}`);
+            return void complete(sess, 400, error);
+        }
+        // Check against existing vpn clients
+        let txidExists = false;
+        let clientFile = path.resolve(__dirname,"./vpnclients.json");
+        vpnfs.readFile(clientFile, 'utf8', (err, data) => {
+            if (err) {
+                console.error(err);
+                return;
+            }
+
+            let parsedData;
+            try {
+                parsedData = JSON.parse(data);
+                let vpnclients = parsedData.clients;
+                const currentTime = Date.now();
+                if (Array.isArray(vpnclients)) {
+                    for (let i = 0; i < vpnclients.length; i++) {
+                        if (vpnclients[i].txid === txid) {
+                            txidExists = true;
+                            console.log(`Transaction has been already processed`);
+                            return void complete(sess, 200, null, {
+                                status: "success",
+                                message: "Transaction has been already processed, you can access your files at /vpnclients/"+vpnclients[i].username+".p12 .sswan or .mobileconfig",
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log('Error parsing JSON:', error);
+            }
+        });
+        let pktAddress = Config.pktAddress;
+        if (pktAddress === "") {
+            //Get an address from PKT wallet
+            axios.post('http://localhost:8080/api/v1/wallet/address/create', {})
+            .then((response) => {
+                pktAddress = response.data.address;
+                console.log(`PKT Wallet: ${pktAddress}`);
+            })
+            .catch((error) => {
+                console.error(error);
+            });
+        }
+        var acceptedAmount = 100*1073741824; // 100 PKT
+        var validPayment = false;
+
+        let errormsg = "";
+        //Check blockchain for transaction - valid payment
+        const explorerurl = `https://api.packetscan.io/api/v1/PKT/pkt/tx/${txid}`;
+        try {
+            const parsedData = await httpsGet(explorerurl);
+            if (parsedData.output) {
+                const outputArray = parsedData.output;
+                for (let i = 0; i < outputArray.length; i++) {
+                    if (outputArray[i].address === pktAddress && parseInt(outputArray[i].value) >= acceptedAmount) {
+                        console.log(`Transaction ${txid} is valid`);
+                        validPayment = true;
+                        break;
+                    } else if (outputArray[i].address !== pktAddress) {
+                        errormsg = `Transaction not for the correct PKT address. Should be for ${pktAddress}`;
+                    } else if (parseInt(outputArray[i].value) < acceptedAmount) {
+                        errormsg = `Transaction ${txid} is less than required 100 PKT`
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Error: " + err.message);
+        }
+
+        if (!validPayment) {
+            console.error(errormsg);
+            return void complete(sess, 500, errormsg);
+        }
+        //Generate vpn client and files, using ikev2.sh
+        var usernameLength = 8;
+        var username = Crypto.randomBytes(usernameLength).toString('hex').slice(0, usernameLength);
+        //TODO: make sure the username does not already exists
+        
+        await addVpnClient(username);
+
+        // Update VPN clients file
+        console.log(`Updating VPN clients file`);
+        vpnfs.readFile(clientFile, 'utf8', (err, data) => {
+            if (err) {
+                console.error(err);
+                return;
+            }
+
+            let parsedData;
+            try {
+                parsedData = JSON.parse(data);
+                let vpnclients = parsedData.clients;
+                const currentTime = Date.now();
+                if (!vpnclients) {
+                    vpnclients = [];
+                }
+                // Append new client to the clients array
+                const newClient = {
+                    txid: txid, 
+                    username: username, 
+                    timeCreated: currentTime
+                };
+                vpnclients.push(newClient);
+
+                // Write the updated data back to json
+                parsedData.clients = vpnclients;
+                lockfile.lock(clientFile)
+                .then(() => { 
+                    vpnfs.writeFile(clientFile, JSON.stringify(parsedData, null, 2), 'utf8', (err) => {
+                        if (err) {
+                            console.error(err);
+                            return;
+                        }
+                        console.log(`Updated ${clientFile}`);
+                    });
+                    return lockfile.unlock(clientFile);
+                });
+            } catch (error) {
+                console.log('Error parsing JSON:', error);
+            }
+        });
+
+        return void complete(sess, 200, null, {
+            status: "success",
+            message: `Get your vpnclient file at /vpnclients/${username}.p12 /vpnclients/${username}.sswan /vpnclients/${username}.mobileconfig`,
+        });
+    });
+};
+
+function isDomainPointingToIPv6(domain, ipv6) {
+    return new Promise((resolve, reject) => {
+        exec(`dig AAAA h.${domain} +short`, (error, stdout, stderr) => {
+            if (error) {
+                reject(`exec error: ${error}`);
+                return;
+            }
+
+            const outputIPv6 = stdout.trim();
+            resolve(outputIPv6 === ipv6);
+        });
+    });
+}
+
+const httpRequestRemoveDomain = (sess) => {
+    console.log("---- Remove Domain request ------");
+    const { req, res } = sess;
+
+    if (req.method !== 'POST') {
+        return void complete(sess, 400, "Bad Request");
+    }
+    let body = '';
+    req.on('data', (chunk) => {
+        body += chunk;
+    });
+
+    req.on('end', () => {
+        try {
+            const { domain, cjdnsIpv6 } = JSON.parse(body);
+            const domainRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
+            const ipv6Regex = /^fc([0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}$/i;
+
+            if (!domainRegex.test(domain)) {
+                return void complete(sess, 400, "Invalid domain");
+            }
+
+            if (!ipv6Regex.test(cjdnsIpv6)) {
+                return void complete(sess, 400, "Invalid CJDNS IPv6 address");
+            }
+
+            exec(`/server/removedomain.sh ${domain} ${cjdnsIpv6}`,{ timeout: 5000 },(error, stdout, stderr) => {
+                if (error) {
+                    console.error(`exec error: ${error}`);
+                    return;
+                }
+                return void complete(sess, 200, null, 
+                {
+                    status: "success",
+                    message: "Domain removed successfully"
+                });
+            });
+        } catch (error) {
+            console.error(`Error parsing JSON: ${error}`);
+            return void complete(sess, 400, "Invalid JSON");
+        }
+    });
+}
+
+const httpRequestAddDomain = (sess) => {
+    console.log("---- Add Domain request ------");
+    const { req, res } = sess;
+
+    if (req.method !== 'POST') {
+        return void complete(sess, 400, "Bad Request");
+    }
+    let body = '';
+    req.on('data', (chunk) => {
+        body += chunk;
+    });
+
+    req.on('end', () => {
+        try {
+            const { domain, cjdnsIpv6 } = JSON.parse(body);
+            
+            const domainRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
+            const ipv6Regex = /^fc([0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}$/i;
+
+            if (!domainRegex.test(domain)) {
+                return void complete(sess, 400, "Invalid domain");
+            }
+
+            if (!ipv6Regex.test(cjdnsIpv6)) {
+                return void complete(sess, 400, "Invalid CJDNS IPv6 address");
+            }
+
+            isDomainPointingToIPv6(domain, cjdnsIpv6).then(isValid => {
+                if(!isValid) {
+                    return void complete(sess, 400, "Domain is not pointing to the given IPv6 address");
+                }
+
+                exec(`/server/adddomain.sh ${domain} ${cjdnsIpv6}`,{ timeout: 5000 },(error, stdout, stderr) => {
+                    if (error) {
+                        console.error(`exec error: ${error}`);
+                        return;
+                    }
+                    return void complete(sess, 200, null, 
+                    {
+                        status: "success",
+                        message: "Domain added successfully"
+                    });
+                });
+            }).catch(err => {
+                console.error(`Error checking domain: ${err}`);
+                return void complete(sess, 400, "Error checking domain");
+            });
+        } catch (error) {
+            console.error(`Error parsing JSON: ${error}`);
+            return void complete(sess, 400, "Invalid JSON");
+        }
+    });
+}
+
 const httpReq = (ctx, req, res) => {
     const sess = {
         ctx,
@@ -704,6 +1004,27 @@ const httpReq = (ctx, req, res) => {
     }
     if (req.url === '/api/0.4/server/reversevpn/') {
         return void httpRequestReverseVPN(sess);
+    }
+    if (req.url === '/api/0.4/server/domain/add/') {
+        return void httpRequestAddDomain(sess);
+    }
+    if (req.url === '/api/0.4/server/domain/remove/') {
+        return void httpRequestRemoveDomain(sess);
+    }
+    if (req.url === '/api/0.4/server/vpnaccess/') {
+        return void httpRequestVPNAccess(sess);
+    }
+    if (req.url.startsWith('/vpnclients/')) {
+        const filePath = path.join('/server/vpnclients/', req.url.replace('/vpnclients/', ''));
+        vpnfs.readFile(filePath, (err, data) => {
+            if (err) {
+                console.error(`Error reading file ${filePath}:`, err);
+                return void complete(sess, 404, "no such file");
+            }
+            res.writeHead(200);
+            res.end(data);
+        });
+        return;
     }
     if (req.url === '/metrics') {
         const target = 'http://localhost:9100';
