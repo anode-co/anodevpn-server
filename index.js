@@ -732,6 +732,8 @@ const httpRequestVPNAccess = (sess) => {
         body += chunk;
     });
 
+    //TODO: check for OpenVPn server and windows support and return the ovpn file as well
+
     req.on('end', async () => {
         let txid = "";
         try {
@@ -766,7 +768,7 @@ const httpRequestVPNAccess = (sess) => {
                             console.log(`Transaction has been already processed`);
                             return void complete(sess, 200, null, {
                                 status: "success",
-                                message: "Transaction has been already processed, you can access your files at /vpnclients/"+vpnclients[i].username+".p12 .sswan or .mobileconfig",
+                                message: "Transaction has been already processed, you can access your files at /vpnclients/"+vpnclients[i].username+".p12 /vpnclients/"+vpnclients[i].username+".sswan /vpnclients/"+vpnclients[i].username+".mobileconfig",
                             });
                         }
                     }
@@ -1022,7 +1024,9 @@ const httpReq = (ctx, req, res) => {
                 console.error(`Error reading file ${filePath}:`, err);
                 return void complete(sess, 404, "no such file");
             }
-            res.writeHead(200);
+            res.writeHead(200, {
+                'Content-Disposition': `attachment; filename=${path.basename(filePath)}`
+            });
             res.end(data);
         });
         return;
