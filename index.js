@@ -1,5 +1,6 @@
 /*@flow*/
 /* global BigInt */
+const Fs = require('fs');
 const vpnfs = require('fs');
 const Http = require('http');
 const Https = require('https');
