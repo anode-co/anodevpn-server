@@ -712,11 +712,18 @@ async function addVpnClient(username) {
             return;
         }
     });
+    console.log(`Generating ovpn file for ${username}`);
+    execSync(`/server/createOpenVpnClient.sh ${username}`, (err, stdout, stderr) => {
+        if (err) {
+            console.error(err);
+            return;
+        }
+    });
     
     console.log(`Copying files to /server/vpnclients`);
     vpnfs.copyFileSync(`/root/${username}.p12`, `/server/vpnclients/${username}.p12`);
     vpnfs.copyFileSync(`/root/${username}.sswan`, `/server/vpnclients/${username}.sswan`);
-    vpnfs.copyFileSync(`/root/${username}.mobileconfig`, `/server/vpnclients/${username}.mobileconfig`);
+    vpnfs.copyFileSync(`/root/${username}.mobileconfig`, `/server/vpnclients/${username}.mobileconfig`);    
 }
 
 const httpRequestVPNAccess = (sess) => {
@@ -766,9 +773,16 @@ const httpRequestVPNAccess = (sess) => {
                         if (vpnclients[i].txid === txid) {
                             txidExists = true;
                             console.log(`Transaction has been already processed`);
+                            filesMsg = "Transaction has been already processed, you can access your files at /vpnclients/"+vpnclients[i].username+".p12 /vpnclients/"+vpnclients[i].username+".sswan /vpnclients/"+vpnclients[i].username+".mobileconfig";
+                            if (Fs.existsSync("/server/vpnclients/"+vpnclients[i].username+".ovpn")) {
+                                console.log(`ovpn file exists`);
+                                filesMsg += " /vpnclients/"+vpnclients[i].username+".ovpn";
+                            } else {
+                                console.log(`ovpn file does not exist`);
+                            }
                             return void complete(sess, 200, null, {
                                 status: "success",
-                                message: "Transaction has been already processed, you can access your files at /vpnclients/"+vpnclients[i].username+".p12 /vpnclients/"+vpnclients[i].username+".sswan /vpnclients/"+vpnclients[i].username+".mobileconfig",
+                                message: filesMsg,
                             });
                         }
                     }
@@ -790,8 +804,7 @@ const httpRequestVPNAccess = (sess) => {
             });
         }
         var acceptedAmount = 100*1073741824; // 100 PKT
-        var validPayment = false;
-
+        var validPayment = false;      
         let errormsg = "";
         //Check blockchain for transaction - valid payment
         const explorerurl = `https://api.packetscan.io/api/v1/PKT/pkt/tx/${txid}`;
@@ -867,10 +880,13 @@ const httpRequestVPNAccess = (sess) => {
                 console.log('Error parsing JSON:', error);
             }
         });
-
+        filesMsg = `Get your vpnclient file at /vpnclients/${username}.p12 /vpnclients/${username}.sswan /vpnclients/${username}.mobileconfig`;
+        if (Fs.existsSync(`/server/vpnclients/${username}.ovpn`)) {
+            filesMsg += ` /vpnclients/${username}.ovpn`;
+        }
         return void complete(sess, 200, null, {
             status: "success",
-            message: `Get your vpnclient file at /vpnclients/${username}.p12 /vpnclients/${username}.sswan /vpnclients/${username}.mobileconfig`,
+            message: filesMsg,
         });
     });
 };
