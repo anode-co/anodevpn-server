@@ -709,16 +709,16 @@ async function addVpnClient(username) {
     execSync(`/usr/bin/ikev2.sh --addclient ${username}`, (err, stdout, stderr) => {
         if (err) {
             console.error(err);
-            return;
         }
     });
-    console.log(`Generating ovpn file for ${username}`);
-    execSync(`/server/createOpenVpnClient.sh ${username}`, (err, stdout, stderr) => {
-        if (err) {
-            console.error(err);
-            return;
-        }
-    });
+    if (Fs.existsSync(`/server/createOpenVpnClient.sh`)) {
+        console.log(`Generating ovpn file for ${username}`);
+        execSync(`/server/createOpenVpnClient.sh ${username}`, (err, stdout, stderr) => {
+            if (err) {
+                console.error(err);
+            }
+        });
+    }
     
     console.log(`Copying files to /server/vpnclients`);
     vpnfs.copyFileSync(`/root/${username}.p12`, `/server/vpnclients/${username}.p12`);
