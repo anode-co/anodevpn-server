@@ -552,7 +552,6 @@ const httpRequestPremium = (sess) => {
                         Fs.writeFile(clientFile, JSON.stringify(parsedData), 'utf8', (err) => {
                             if (err) {
                                 console.error(err);
-                                return;
                             }
                             console.log(`Updated ${clientFile}`);
                         });
@@ -791,18 +790,38 @@ const httpRequestVPNAccess = (sess) => {
                 console.log('Error parsing JSON:', error);
             }
         });
-        let pktAddress = Config.pktAddress;
-        if (pktAddress === "") {
-            //Get an address from PKT wallet
-            axios.post('http://localhost:8080/api/v1/wallet/address/create', {})
-            .then((response) => {
-                pktAddress = response.data.address;
-                console.log(`PKT Wallet: ${pktAddress}`);
-            })
-            .catch((error) => {
-                console.error(error);
-            });
+        let pktAddress = "";
+        if ((typeof Config.pktAddress !== 'undefined') && (Config.pktAddress !== "")) {
+            console.log(`Using PKT address from config ${Config.pktAddress}`);
+            pktAddress = Config.pktAddress;
         }
+        //Get existing address
+        axios.post('http://localhost:8080/api/v1/wallet/address/balances', {"showzerobalance": true})
+        .then((response) => {
+            console.log(`Getting existing PKT address`);
+            if (response.data.addrs && response.data.addrs.length > 0) {
+                pktAddress = response.data.addrs[0].address;
+            } else {
+                pktAddress = ""; 
+                console.log(`Creating new PKT address`);
+                //Create new address from PKT wallet
+                axios.post('http://localhost:8080/api/v1/wallet/address/create', {})
+                .then((response) => {
+                    if (response.data.addrs && response.data.addrs.length > 0) {
+                        pktAddress = response.data.addrs[0].address;
+                    } else {
+                        pktAddress = "";
+                    }
+                })
+                .catch((error) => {
+                    console.error(error);
+                });
+            }
+        })
+        .catch((error) => {
+            console.error(error);
+        });
+
         var acceptedAmount = 100*1073741824; // 100 PKT
         var validPayment = false;      
         let errormsg = "";
@@ -870,7 +889,6 @@ const httpRequestVPNAccess = (sess) => {
                     vpnfs.writeFile(clientFile, JSON.stringify(parsedData, null, 2), 'utf8', (err) => {
                         if (err) {
                             console.error(err);
-                            return;
                         }
                         console.log(`Updated ${clientFile}`);
                     });
