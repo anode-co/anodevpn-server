@@ -1,7 +1,7 @@
 /*@flow*/
 /* global BigInt */
 const Fs = require('fs');
-const vpnfs = require('fs');
+const vpnfs = require('fs').promises;
 const Http = require('http');
 const Https = require('https');
 const Crypto = require('crypto');
@@ -703,7 +703,6 @@ const httpsGet = (url) => {
 };
 
 async function addVpnClient(username) {
-    console.log(`Adding new vpn client ${username}`);
     console.log(`Generating p12, sswan and mobileconfig files for ${username}`);
     execSync(`/usr/bin/ikev2.sh --addclient ${username}`, (err, stdout, stderr) => {
         if (err) {
@@ -720,9 +719,79 @@ async function addVpnClient(username) {
     }
     
     console.log(`Copying files to /server/vpnclients`);
-    vpnfs.copyFileSync(`/root/${username}.p12`, `/server/vpnclients/${username}.p12`);
-    vpnfs.copyFileSync(`/root/${username}.sswan`, `/server/vpnclients/${username}.sswan`);
-    vpnfs.copyFileSync(`/root/${username}.mobileconfig`, `/server/vpnclients/${username}.mobileconfig`);    
+    vpnfs.copyFile(`/root/${username}.p12`, `/server/vpnclients/${username}.p12`);
+    vpnfs.copyFile(`/root/${username}.sswan`, `/server/vpnclients/${username}.sswan`);
+    vpnfs.copyFile(`/root/${username}.mobileconfig`, `/server/vpnclients/${username}.mobileconfig`);    
+}
+
+async function isValidPaymentTxid(txid,pktAdress,acceptedAmount) {
+    let validPayment = false;
+    const explorerurl = `https://api.packetscan.io/api/v1/PKT/pkt/tx/${txid}`;
+    try {
+        const parsedData = await httpsGet(explorerurl);
+        if (parsedData.output) {
+            const outputArray = parsedData.output;
+            for (let i = 0; i < outputArray.length; i++) {
+                if (outputArray[i].address === pktAddress && parseInt(outputArray[i].value) >= acceptedAmount) {
+                    console.log(`Transaction ${txid} is valid`);
+                    validPayment = true;
+                    break;
+                } else if (outputArray[i].address !== pktAddress) {
+                    errormsg = `Transaction not for the correct PKT address. Should be for ${pktAddress}`;
+                } else if (parseInt(outputArray[i].value) < acceptedAmount) {
+                    errormsg = `Transaction ${txid} is less than required 100 PKT`
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Error: " + err.message);
+    }
+    return validPayment;
+}
+
+async function isValidPaymentAddress(address,requiredAmount) {
+    let validPayment = false;
+    const explorerurl = `https://api.packetscan.io/api/v1/PKT/pkt/address/${address}`
+    try {
+        const parsedData = await httpsGet(explorerurl);
+        if ((parsedData.balance) && parseInt(parsedData.balance) >= requiredAmount) {
+            console.log(`Address ${address} has a valid balance of ${parsedData.balance} PKT`);
+            validPayment = true;
+        } else if (parseInt(parsedData.balance) < requiredAmount) {
+            errormsg = `Address ${address} has less than ${requiredAmount} PKT`
+            console.error(errormsg);
+        }
+    } catch (err) {
+        console.error("Error: " + err.message);
+    }
+    return validPayment;
+}
+
+async function updateVPNClientFile(paymentAddress, username) {
+    let clientFile = path.resolve(__dirname,"./vpnclients.json");
+    console.log(`Updating VPN clients file: ${clientFile}`);
+    try {
+        const data = await vpnfs.readFile(clientFile, 'utf8');
+        let parsedData = JSON.parse(data);
+        let vpnclients = parsedData.clients || [];
+        const currentTime = Date.now();
+
+        vpnclients.push({
+            address: paymentAddress,
+            username: username,
+            timeCreated: currentTime
+        });
+
+        parsedData.clients = vpnclients;
+
+        await lockfile.lock(clientFile);
+        await vpnfs.writeFile(clientFile, JSON.stringify(parsedData, null, 2), 'utf8');
+        console.log(`Updated ${clientFile}`);
+    } catch (error) {
+        console.error(`Error updating VPN clients file: ${error}`);
+    } finally {
+        await lockfile.unlock(clientFile).catch(console.error);
+    }
 }
 
 const httpRequestVPNAccess = (sess) => {
@@ -738,166 +807,68 @@ const httpRequestVPNAccess = (sess) => {
         body += chunk;
     });
 
-    //TODO: check for OpenVPn server and windows support and return the ovpn file as well
-
     req.on('end', async () => {
-        let txid = "";
+        let paymentAddress = "";
         try {
             const request = JSON.parse(body);
 
-            if (!request.txid) {
-                return void complete(sess, 400, "Missing 'txid' property");
+            paymentAddress = request.address;
+            if (!request.address) {
+                return void complete(sess, 400, "Missing 'address' property");
             }
-            txid = request.txid;
+            
         } catch (error) {
             console.error(`Error: ${error}`);
             return void complete(sess, 400, error);
         }
         // Check against existing vpn clients
-        let txidExists = false;
+        let addressExists = false;
         let clientFile = path.resolve(__dirname,"./vpnclients.json");
-        vpnfs.readFile(clientFile, 'utf8', (err, data) => {
-            if (err) {
-                console.error(err);
-                return;
-            }
-
-            let parsedData;
-            try {
-                parsedData = JSON.parse(data);
-                let vpnclients = parsedData.clients;
-                const currentTime = Date.now();
-                if (Array.isArray(vpnclients)) {
-                    for (let i = 0; i < vpnclients.length; i++) {
-                        if (vpnclients[i].txid === txid) {
-                            txidExists = true;
-                            console.log(`Transaction has been already processed`);
-                            filesMsg = "Transaction has been already processed, you can access your files at /vpnclients/"+vpnclients[i].username+".p12 /vpnclients/"+vpnclients[i].username+".sswan /vpnclients/"+vpnclients[i].username+".mobileconfig";
-                            if (Fs.existsSync("/server/vpnclients/"+vpnclients[i].username+".ovpn")) {
-                                console.log(`ovpn file exists`);
-                                filesMsg += " /vpnclients/"+vpnclients[i].username+".ovpn";
-                            } else {
-                                console.log(`ovpn file does not exist`);
-                            }
-                            return void complete(sess, 200, null, {
-                                status: "success",
-                                message: filesMsg,
-                            });
+        try {
+            const clientsdata = await vpnfs.readFile(clientFile, 'utf8');
+            const parsedData = JSON.parse(clientsdata);
+            let vpnclients = parsedData.clients;
+            const currentTime = Date.now();
+            if (Array.isArray(vpnclients)) {
+                for (let i = 0; i < vpnclients.length; i++) {
+                    if (vpnclients[i].address === paymentAddress) {
+                        addressExists = true;
+                        console.log(`Transaction has been already processed`);
+                        filesMsg = "Transaction has been already processed, you can access your files at /vpnclients/"+vpnclients[i].username+".p12 /vpnclients/"+vpnclients[i].username+".sswan /vpnclients/"+vpnclients[i].username+".mobileconfig";
+                        if (Fs.existsSync("/server/vpnclients/"+vpnclients[i].username+".ovpn")) {
+                            filesMsg += " /vpnclients/"+vpnclients[i].username+".ovpn";
+                        } else {
+                            console.log(`ovpn file does not exist`);
                         }
+                        return void complete(sess, 200, null, {
+                            status: "success",
+                            message: filesMsg,
+                        });
                     }
                 }
-            } catch (error) {
-                console.log('Error parsing JSON:', error);
             }
-        });
-        let pktAddress = "";
-        if ((typeof Config.pktAddress !== 'undefined') && (Config.pktAddress !== "")) {
-            console.log(`Using PKT address from config ${Config.pktAddress}`);
-            pktAddress = Config.pktAddress;
+        } catch (error) {
+            console.log('Error parsing JSON:', error);
         }
-        //Get existing address
-        axios.post('http://localhost:8080/api/v1/wallet/address/balances', {"showzerobalance": true})
-        .then((response) => {
-            console.log(`Getting existing PKT address`);
-            if (response.data.addrs && response.data.addrs.length > 0) {
-                pktAddress = response.data.addrs[0].address;
-            } else {
-                pktAddress = ""; 
-                console.log(`Creating new PKT address`);
-                //Create new address from PKT wallet
-                axios.post('http://localhost:8080/api/v1/wallet/address/create', {})
-                .then((response) => {
-                    if (response.data.addrs && response.data.addrs.length > 0) {
-                        pktAddress = response.data.addrs[0].address;
-                    } else {
-                        pktAddress = "";
-                    }
-                })
-                .catch((error) => {
-                    console.error(error);
-                });
-            }
-        })
-        .catch((error) => {
-            console.error(error);
-        });
 
-        var acceptedAmount = 100*1073741824; // 100 PKT
+        var requiredAmount = 100*1073741824; // 100 PKT
         var validPayment = false;      
         let errormsg = "";
-        //Check blockchain for transaction - valid payment
-        const explorerurl = `https://api.packetscan.io/api/v1/PKT/pkt/tx/${txid}`;
-        try {
-            const parsedData = await httpsGet(explorerurl);
-            if (parsedData.output) {
-                const outputArray = parsedData.output;
-                for (let i = 0; i < outputArray.length; i++) {
-                    if (outputArray[i].address === pktAddress && parseInt(outputArray[i].value) >= acceptedAmount) {
-                        console.log(`Transaction ${txid} is valid`);
-                        validPayment = true;
-                        break;
-                    } else if (outputArray[i].address !== pktAddress) {
-                        errormsg = `Transaction not for the correct PKT address. Should be for ${pktAddress}`;
-                    } else if (parseInt(outputArray[i].value) < acceptedAmount) {
-                        errormsg = `Transaction ${txid} is less than required 100 PKT`
-                    }
-                }
-            }
-        } catch (err) {
-            console.error("Error: " + err.message);
-        }
-
+        //Check blockchain for address - valid payment
+        validPayment = await isValidPaymentAddress(paymentAddress,requiredAmount);
         if (!validPayment) {
             console.error(errormsg);
             return void complete(sess, 500, errormsg);
-        }
+        } 
         //Generate vpn client and files, using ikev2.sh
         var usernameLength = 8;
         var username = Crypto.randomBytes(usernameLength).toString('hex').slice(0, usernameLength);
-        //TODO: make sure the username does not already exists
-        
+       
         await addVpnClient(username);
 
         // Update VPN clients file
-        console.log(`Updating VPN clients file`);
-        vpnfs.readFile(clientFile, 'utf8', (err, data) => {
-            if (err) {
-                console.error(err);
-                return;
-            }
+        await updateVPNClientFile(paymentAddress,username);
 
-            let parsedData;
-            try {
-                parsedData = JSON.parse(data);
-                let vpnclients = parsedData.clients;
-                const currentTime = Date.now();
-                if (!vpnclients) {
-                    vpnclients = [];
-                }
-                // Append new client to the clients array
-                const newClient = {
-                    txid: txid, 
-                    username: username, 
-                    timeCreated: currentTime
-                };
-                vpnclients.push(newClient);
-
-                // Write the updated data back to json
-                parsedData.clients = vpnclients;
-                lockfile.lock(clientFile)
-                .then(() => { 
-                    vpnfs.writeFile(clientFile, JSON.stringify(parsedData, null, 2), 'utf8', (err) => {
-                        if (err) {
-                            console.error(err);
-                        }
-                        console.log(`Updated ${clientFile}`);
-                    });
-                    return lockfile.unlock(clientFile);
-                });
-            } catch (error) {
-                console.log('Error parsing JSON:', error);
-            }
-        });
         filesMsg = `Get your vpnclient file at /vpnclients/${username}.p12 /vpnclients/${username}.sswan /vpnclients/${username}.mobileconfig`;
         if (Fs.existsSync(`/server/vpnclients/${username}.ovpn`)) {
             filesMsg += ` /vpnclients/${username}.ovpn`;
