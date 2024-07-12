@@ -992,6 +992,28 @@ const httpRequestAddDomain = (sess) => {
     });
 }
 
+const httpRequestStatus = (sess) => {
+    exec('/data/status.sh', (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Error executing script: ${error}`);
+            return void complete(sess, 500, "Error in getting status");
+        }
+
+        if (stderr) {
+            console.error(`Script stderr: ${stderr}`);
+            return void complete(sess, 500, "Error when running status");
+        }
+
+        try {
+            const jsonResponse = JSON.parse(stdout);
+            return void complete(sess, 200, null, JSON.stringify(jsonResponse));
+        } catch (parseError) {
+            console.error(`Error parsing JSON: ${parseError}`);
+            return void complete(sess, 500, "Error parsing output JSON");
+        }
+    });
+}
+
 const httpReq = (ctx, req, res) => {
     const sess = {
         ctx,
@@ -1035,6 +1057,9 @@ const httpReq = (ctx, req, res) => {
             res.end(data);
         });
         return;
+    }
+    if (req.url === '/api/0.4/server/status/') {
+        return void httpRequestStatus(sess);
     }
     if (req.url === '/metrics') {
         const target = 'http://localhost:9100';
