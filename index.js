@@ -1046,7 +1046,7 @@ const httpReq = (ctx, req, res) => {
     }
     if (req.url.startsWith('/vpnclients/')) {
         const filePath = path.join('/server/vpnclients/', req.url.replace('/vpnclients/', ''));
-        vpnfs.readFile(filePath, (err, data) => {
+        Fs.readFile(filePath, (err, data) => {
             if (err) {
                 console.error(`Error reading file ${filePath}:`, err);
                 return void complete(sess, 404, "no such file");
